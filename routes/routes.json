@@ -1,0 +1,12 @@
+[
+  {
+    "path": "/service1",
+    "serviceURL": "http://localhost:9001",
+    "method": "GET"
+  },
+  {
+    "path": "/service2",
+    "serviceURL": "http://localhost:9002",
+    "method": "GET"
+  }
+]
