@@ -2,20 +2,61 @@ package middleware
 
 import (
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"net/http"
+	"time"
 )
 
-type MiddlewareChain struct {
-	logger *zap.Logger
+type Middleware struct {
+	logger  *zap.Logger
+	limiter *rate.Limiter
 }
 
-func NewMiddlewareChain(logger *zap.Logger) *MiddlewareChain {
-	return &MiddlewareChain{logger: logger}
+func NewMiddleware(logger *zap.Logger) *Middleware {
+	return &Middleware{
+		logger:  logger,
+		limiter: rate.NewLimiter(1, 5), // por exemplo, 1 request por segundo com burst de 5
+	}
 }
 
-func (mc *MiddlewareChain) Then(handler http.Handler) http.Handler {
+func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mc.logger.Info("Request received", zap.String("path", r.URL.Path))
-		handler.ServeHTTP(w, r)
+		token := r.Header.Get("Authorization")
+		if token == "" || token != "Bearer your-token" { // Implementar lógica de autenticação real aqui
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (m *Middleware) RateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !m.limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (m *Middleware) ValidateHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Adicionar lógica de validação de headers aqui
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (m *Middleware) Analytics(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		duration := time.Since(start)
+		m.logger.Info("Request processed",
+			zap.String("path", r.URL.Path),
+			zap.Duration("duration", duration))
 	})
 }
