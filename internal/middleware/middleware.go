@@ -4,12 +4,36 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type Middleware struct {
 	logger  *zap.Logger
 	limiter *rate.Limiter
+}
+
+type visitor struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+var visitors = make(map[string]*visitor)
+var mtx sync.Mutex
+
+func getVisitor(ip string) *rate.Limiter {
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	v, exists := visitors[ip]
+	if !exists {
+		limiter := rate.NewLimiter(1, 5) // Ajuste de acordo com suas necessidades
+		visitors[ip] = &visitor{limiter, time.Now()}
+		return limiter
+	}
+
+	v.lastSeen = time.Now()
+	return v.limiter
 }
 
 func NewMiddleware(logger *zap.Logger) *Middleware {
@@ -33,8 +57,9 @@ func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 
 func (m *Middleware) RateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !m.limiter.Allow() {
-			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+		limiter := getVisitor(r.RemoteAddr)
+		if !limiter.Allow() {
+			http.Error(w, http.StatusText(429), http.StatusTooManyRequests)
 			return
 		}
 
