@@ -43,9 +43,16 @@ func (m *Middleware) RateLimit(next http.Handler) http.Handler {
 }
 
 func (m *Middleware) ValidateHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Adicionar lógica de validação de headers aqui
+	requiredHeaders := []string{"X-Request-ID", "X-Client-ID"} // Exemplo de headers requeridos
 
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, header := range requiredHeaders {
+			if r.Header.Get(header) == "" {
+				http.Error(w, "Bad Request - Missing Headers", http.StatusBadRequest)
+				m.logger.Error("Missing header", zap.String("header", header))
+				return
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
