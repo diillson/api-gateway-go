@@ -6,6 +6,7 @@ import (
 	"github.com/diillson/api-gateway-go/internal/handler"
 	"github.com/diillson/api-gateway-go/internal/logging"
 	"github.com/diillson/api-gateway-go/internal/middleware"
+	"github.com/justinas/alice"
 	"go.uber.org/zap"
 	"log"
 	"net/http"
@@ -40,7 +41,7 @@ func loadRoutes(filePath string) ([]Route, error) {
 func main() {
 	logger := logging.NewLogger()
 
-	routes, err := loadRoutes("./routes/routes.json")
+	_, err := loadRoutes("./routes/routes.json")
 	if err != nil {
 		logger.Fatal("Failed to load routes", zap.Error(err))
 	}
@@ -52,7 +53,7 @@ func main() {
 
 	httpHandler := handler.NewHandler(db, logger)
 	for _, route := range routes {
-		httpHandler.AddRoute(route.Path, route.ServiceURL, route.Method)
+		httpHandler.AddRoute(route.Path, route.ServiceURL, route.Methods)
 	}
 
 	middleware := middleware.NewMiddleware(logger)
@@ -67,12 +68,9 @@ func main() {
 	).Then(httpHandler)
 
 	http.Handle("/", chain)
-	http.Handle("/admin/register", middleware.AuthenticateAdmin(h.RegisterAPI))
-	// Rota para listar todas as APIs registradas
-	http.Handle("/admin/apis", middleware.AuthenticateAdmin(h.ListAPIs))
-	// Rota para atualizar uma API existente
-	http.Handle("/admin/update", middleware.AuthenticateAdmin(h.UpdateAPI))
-	// Rota para deletar uma API existente
-	http.Handle("/admin/delete", middleware.AuthenticateAdmin(h.DeleteAPI))
+	http.Handle("/admin/register", middleware.AuthenticateAdmin(http.HandlerFunc(httpHandler.RegisterAPI)))
+	http.Handle("/admin/apis", middleware.AuthenticateAdmin(http.HandlerFunc(httpHandler.ListAPIs)))
+	http.Handle("/admin/update", middleware.AuthenticateAdmin(http.HandlerFunc(httpHandler.UpdateAPI)))
+	http.Handle("/admin/delete", middleware.AuthenticateAdmin(http.HandlerFunc(httpHandler.DeleteAPI)))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
