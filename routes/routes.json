@@ -10,5 +10,14 @@
     "serviceURL": "http://localhost:9002",
     "method": "GET",
     "headers": ["X-Request-ID"]
+  },
+  {
+    "path": "/newService",
+    "serviceURL": "http://localhost:9010",
+    "methods": ["GET"],
+    "headers": ["X-Request-ID"],
+    "description": "My new service",
+    "isActive": true
   }
+
 ]

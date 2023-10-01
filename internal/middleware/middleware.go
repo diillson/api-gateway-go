@@ -90,10 +90,46 @@ func (m *Middleware) ValidateHeaders(next http.Handler) http.Handler {
 func (m *Middleware) Analytics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
 		next.ServeHTTP(w, r)
+
 		duration := time.Since(start)
+		route, exists := m.routes[r.URL.Path]
+		if exists {
+			route.CallCount++
+			route.TotalResponse += duration
+		}
+
 		m.logger.Info("Request processed",
 			zap.String("path", r.URL.Path),
-			zap.Duration("duration", duration))
+			zap.Duration("duration", duration),
+			zap.Int64("callCount", route.CallCount),
+			zap.Duration("totalResponseTime", route.TotalResponse))
+	})
+}
+
+func (m *Middleware) AuthenticateAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Aqui, você pode adicionar uma lógica mais complexa para validar se o usuário é um admin,
+		// como verificar tokens JWT, OAuth, ou outros métodos de autenticação.
+		adminToken := r.Header.Get("Admin-Token")
+		if adminToken != "your-secret-admin-token" {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (m *Middleware) RecoverPanic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				m.logger.Error("Recovered from panic", zap.Any("error", err))
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
 	})
 }
