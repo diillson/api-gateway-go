@@ -12,9 +12,10 @@ import (
 )
 
 type Route struct {
-	Path       string `json:"path"`
-	ServiceURL string `json:"serviceURL"`
-	Method     string `json:"method"`
+	Path       string   `json:"path"`
+	ServiceURL string   `json:"serviceURL"`
+	Methods    []string `json:"methods"`
+	Headers    []string `json:"headers"`
 }
 
 func loadRoutes(filePath string) ([]Route, error) {

@@ -2,11 +2,13 @@
   {
     "path": "/service1",
     "serviceURL": "http://localhost:9001",
-    "method": "GET"
+    "methods": ["GET", "POST"],
+    "headers": ["X-Request-ID", "X-Client-ID"]
   },
   {
     "path": "/service2",
     "serviceURL": "http://localhost:9002",
-    "method": "GET"
+    "method": "GET",
+    "headers": ["X-Request-ID"]
   }
 ]
