@@ -30,5 +30,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(dest)
+	w.Header().Add("X-Api-Gateway", "MyApiGateway")
 	proxy.ServeHTTP(w, r)
 }

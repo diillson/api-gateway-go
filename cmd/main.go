@@ -43,7 +43,14 @@ func main() {
 		httpHandler.AddRoute(route.Path, route.ServiceURL, route.Method)
 	}
 
-	chain := middleware.NewMiddlewareChain(logger).Then(httpHandler)
+	middleware := middleware.NewMiddleware(logger)
+
+	chain := alice.New(
+		middleware.Authenticate,
+		middleware.RateLimit,
+		middleware.ValidateHeaders,
+		middleware.Analytics,
+	).Then(httpHandler)
 
 	http.Handle("/", chain)
 	log.Fatal(http.ListenAndServe(":8080", nil))
