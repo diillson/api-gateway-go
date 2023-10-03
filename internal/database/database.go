@@ -1,96 +1,144 @@
 package database
 
 import (
-	"database/sql"
 	"encoding/json"
-	"github.com/diillson/api-gateway-go/internal/config" // Certifique-se de que este import está correto
-	_ "github.com/mattn/go-sqlite3"
-	"log"
-	"strings"
+	"errors"
+	"fmt"
+	"github.com/diillson/api-gateway-go/internal/config"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type Database struct {
-	Conn *sql.DB
+	DB *gorm.DB
 }
 
-func NewDatabase() *Database {
-	conn, err := sql.Open("sqlite3", "./routes.db")
+func (db *Database) UpdateMetrics(route *config.Route) error {
+	return db.DB.Model(route).Where("path = ?", route.Path).Updates(map[string]interface{}{
+		"call_count":     route.CallCount,
+		"total_response": route.TotalResponse,
+	}).Error
+}
+
+func NewDatabase() (*Database, error) {
+	db, err := gorm.Open(sqlite.Open("./routes.db"), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		return nil, err
 	}
 
-	db := &Database{Conn: conn}
+	database := &Database{DB: db}
 
-	if err := db.initialize(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+	if err := database.initialize(); err != nil {
+		return nil, err
 	}
 
-	return db
+	return database, nil
 }
 
 func (db *Database) initialize() error {
-	query := `
-    CREATE TABLE IF NOT EXISTS routes (
-        path TEXT NOT NULL,
-        serviceURL TEXT NOT NULL,
-        methods TEXT NOT NULL,
-        headers TEXT NOT NULL,
-        description TEXT,
-        isActive BOOLEAN,
-        callCount INTEGER,
-        totalResponse INTEGER,
-        PRIMARY KEY (path)
-    )`
-
-	_, err := db.Conn.Exec(query)
+	err := db.DB.AutoMigrate(&config.Route{})
 	return err
 }
 
 func (db *Database) GetRoutes() ([]*config.Route, error) {
-	rows, err := db.Conn.Query("SELECT path, serviceURL, methods, headers, description, isActive, callCount, totalResponse FROM routes")
-	if err != nil {
-		return nil, err
+	if db == nil || db.DB == nil {
+		return nil, errors.New("database not initialized")
 	}
-	defer rows.Close()
+
+	var routeEntities []struct {
+		config.Route
+		MethodsJSON         string `gorm:"column:methods"`
+		HeadersJSON         string `gorm:"column:headers"`
+		RequiredHeadersJSON string `gorm:"column:required_headers"`
+	}
+
+	// Query usando métodos GORM
+	result := db.DB.Table("routes").Scan(&routeEntities)
+	if result.Error != nil {
+		return nil, result.Error
+	}
 
 	var routes []*config.Route
-	for rows.Next() {
-		var r config.Route
-		var methods, headers string
-		if err := rows.Scan(&r.Path, &r.ServiceURL, &methods, &headers, &r.Description, &r.IsActive, &r.CallCount, &r.TotalResponse); err != nil {
+	for _, entity := range routeEntities {
+		if err := json.Unmarshal([]byte(entity.MethodsJSON), &entity.Methods); err != nil {
 			return nil, err
 		}
-		r.Methods = strings.Split(methods, ",")
-		r.Headers = strings.Split(headers, ",")
-		routes = append(routes, &r)
+		if err := json.Unmarshal([]byte(entity.HeadersJSON), &entity.Headers); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(entity.RequiredHeadersJSON), &entity.RequiredHeaders); err != nil {
+			return nil, err
+		}
+		route := entity.Route
+		routes = append(routes, &route)
 	}
 
 	return routes, nil
 }
 
 func (db *Database) AddRoute(route *config.Route) error {
-	methods, _ := json.Marshal(route.Methods)
-	headers, _ := json.Marshal(route.Headers)
+	// Convertendo os slices para JSON
+	methods, err := json.Marshal(route.Methods)
+	if err != nil {
+		return errors.New("failed to marshal methods: " + err.Error())
+	}
 
-	_, err := db.Conn.Exec(
-		"INSERT INTO routes (path, serviceURL, methods, headers, description, isActive, callCount, totalResponse) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		route.Path, route.ServiceURL, methods, headers, route.Description, route.IsActive, route.CallCount, route.TotalResponse,
-	)
-	return err
+	headers, err := json.Marshal(route.Headers)
+	if err != nil {
+		return errors.New("failed to marshal headers: " + err.Error())
+	}
+
+	requiredHeaders, err := json.Marshal(route.RequiredHeaders)
+	if err != nil {
+		return errors.New("failed to marshal required headers: " + err.Error())
+	}
+
+	// Criando um mapa para armazenar os valores que serão salvos no DB
+	data := map[string]interface{}{
+		"path":             route.Path,
+		"service_url":      route.ServiceURL,
+		"methods":          string(methods),
+		"headers":          string(headers),
+		"description":      route.Description,
+		"is_active":        route.IsActive,
+		"call_count":       route.CallCount,
+		"total_response":   route.TotalResponse,
+		"required_headers": string(requiredHeaders),
+	}
+
+	// Armazenando os dados no banco de dados
+	if err := db.DB.Model(&config.Route{}).Create(&data).Error; err != nil {
+		return errors.New("failed to add route: " + err.Error())
+	}
+
+	return nil
 }
 
 func (db *Database) UpdateRoute(route *config.Route) error {
-	methods, _ := json.Marshal(route.Methods)
-	headers, _ := json.Marshal(route.Headers)
+	if db == nil || db.DB == nil {
+		return errors.New("database not initialized")
+	}
 
-	_, err := db.Conn.Exec(
-		"UPDATE routes SET serviceURL = ?, methods = ?, headers = ?, description = ?, isActive = ?, callCount = ?, totalResponse = ? WHERE path = ?",
-		route.ServiceURL, methods, headers, route.Description, route.IsActive, route.CallCount, route.TotalResponse, route.Path,
-	)
-	return err
+	// Não é necessário passar um ponteiro aqui, GORM pode lidar com o valor diretamente
+	if err := db.DB.Save(route).Error; err != nil {
+		return fmt.Errorf("failed to update route: %w", err)
+	}
+	return nil
 }
 
 func (db *Database) DeleteRoute(path string) error {
-	_, err := db.Conn.Exec("DELETE FROM routes WHERE path = ?", path)
-	return err
+	if db == nil || db.DB == nil {
+		return errors.New("database not initialized")
+	}
+
+	// Certifique-se de que o path não está vazio
+	if path == "" {
+		return errors.New("path cannot be empty")
+	}
+
+	// Não é necessário criar uma instância de config.Route se você está apenas excluindo por path
+	if err := db.DB.Where("path = ?", path).Delete(&config.Route{}).Error; err != nil {
+		return fmt.Errorf("failed to delete route: %w", err)
+	}
+	return nil
 }

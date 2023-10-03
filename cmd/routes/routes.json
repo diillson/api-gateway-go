@@ -1,0 +1,22 @@
+[
+  {
+    "path": "/api/v1/example",
+    "serviceURL": "http://example.com",
+    "methods": ["GET", "POST"],
+    "headers": ["Content-Type", "Authorization"],
+    "description": "Uma API exemplo",
+    "isActive": true,
+    "requiredHeaders": ["X-Request-ID"]
+  },
+  {
+    "path": "/api/v1/another",
+    "serviceURL": "http://another.com",
+    "methods": ["GET"],
+    "headers": [],
+    "description": "Outra API exemplo",
+    "isActive": true,
+    "callCount": 0,
+    "totalResponse": 0,
+    "requiredHeaders": ["X-Request-ID", "Authorization"]
+  }
+]

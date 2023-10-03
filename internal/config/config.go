@@ -1,12 +1,21 @@
 package config
 
+import (
+	"errors"
+	"os"
+)
+
 type Config struct {
 	Port string
 }
 
 func LoadConfig() (*Config, error) {
-	// Carregar a configuração aqui (por exemplo, de um arquivo, variáveis de ambiente, etc.)
+	port := os.Getenv("PORT")
+	if port == "" {
+		return nil, errors.New("PORT is not set")
+	}
+
 	return &Config{
-		Port: "8080",
+		Port: port,
 	}, nil
 }
