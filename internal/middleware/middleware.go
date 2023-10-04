@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"github.com/diillson/api-gateway-go/internal/auth"
-	"github.com/diillson/api-gateway-go/internal/config"
 	"github.com/diillson/api-gateway-go/internal/database"
+	"github.com/diillson/api-gateway-go/pkg/config"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"

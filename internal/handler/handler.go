@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"github.com/diillson/api-gateway-go/internal/config"
 	"github.com/diillson/api-gateway-go/internal/database"
+	"github.com/diillson/api-gateway-go/pkg/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"net/http"

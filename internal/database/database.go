@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/diillson/api-gateway-go/internal/config"
+	"github.com/diillson/api-gateway-go/pkg/config"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

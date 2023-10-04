@@ -2,7 +2,7 @@ package auth
 
 import (
 	"fmt"
-	"github.com/diillson/api-gateway-go/internal/logging"
+	"github.com/diillson/api-gateway-go/pkg/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"go.uber.org/zap"

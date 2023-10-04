@@ -1,22 +1,35 @@
 [
   {
-    "path": "/api/v1/example",
-    "serviceURL": "http://example.com",
-    "methods": ["GET", "POST"],
-    "headers": ["Content-Type", "Authorization"],
-    "description": "Uma API exemplo",
+    "path": "/ws/22450200/json",
+    "serviceURL": "https://viacep.com.br",
+    "methods": ["GET"],
+    "headers": ["Content-type","Autorization"],
+    "description": "Outra API exemplo",
     "isActive": true,
+    "callCount": 0,
+    "totalResponse": 0,
     "requiredHeaders": ["X-Request-ID"]
   },
   {
-    "path": "/api/v1/another",
-    "serviceURL": "http://another.com",
+    "path": "/ws/22450210/json",
+    "serviceURL": "https://viacep.com.br",
+    "methods": ["GET","POST"],
+    "headers": [],
+    "description": "Outra API exemplo",
+    "isActive": true,
+    "callCount": 0,
+    "totalResponse": 0,
+    "requiredHeaders": ["X-Request-ID"]
+  },
+  {
+    "path": "/ws/22450220/json",
+    "serviceURL": "https://viacep.com.br",
     "methods": ["GET"],
     "headers": [],
     "description": "Outra API exemplo",
     "isActive": true,
     "callCount": 0,
     "totalResponse": 0,
-    "requiredHeaders": ["X-Request-ID", "Authorization"]
+    "requiredHeaders": ["X-Request-ID"]
   }
 ]

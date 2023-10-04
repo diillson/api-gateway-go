@@ -3,16 +3,17 @@ package main
 import (
 	"github.com/diillson/api-gateway-go/initialization"
 	"github.com/diillson/api-gateway-go/internal/auth"
-	"github.com/diillson/api-gateway-go/internal/config"
 	"github.com/diillson/api-gateway-go/internal/database"
 	"github.com/diillson/api-gateway-go/internal/handler"
-	"github.com/diillson/api-gateway-go/internal/logging"
 	"github.com/diillson/api-gateway-go/internal/middleware"
+	"github.com/diillson/api-gateway-go/pkg/config"
+	"github.com/diillson/api-gateway-go/pkg/logging"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 ) // This should be the same secret key used in the IsAuthenticated middleware
 
 func main() {
+	// Inciializando uma instância de LOG
 	logger, err := logging.NewLogger()
 	if err != nil {
 		// handle error
@@ -28,6 +29,7 @@ func main() {
 	r := gin.Default()
 	r.Use(auth.IsAuthenticated())
 
+	// Inicialização das rotas do routes.json
 	err = initialization.LoadAndSaveRoutes(r, "./routes/routes.json", db, logger)
 	if err != nil {
 		logger.Error("Failed to load routes", zap.Error(err))
