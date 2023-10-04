@@ -83,6 +83,28 @@ func (db *Database) AddRoute(route *config.Route) error {
 		return errors.New("failed to marshal methods: " + err.Error())
 	}
 
+	// Verificar se a rota já existe
+	existingRoute := &struct {
+		config.Route
+		Methods string
+	}{}
+
+	if err := db.DB.Table("routes").Select("path, methods").Where("path = ?", route.Path).First(existingRoute).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("failed to check for existing route: %w", err)
+		}
+	}
+
+	if existingRoute.Path != "" {
+		methods := []string{}
+		if err := json.Unmarshal([]byte(existingRoute.Methods), &methods); err != nil {
+			return fmt.Errorf("error unmarshalling methods: %w", err)
+		}
+		existingRoute.Route.Methods = methods
+
+		return fmt.Errorf("route already exists: %s", route.Path)
+	}
+
 	headers, err := json.Marshal(route.Headers)
 	if err != nil {
 		return errors.New("failed to marshal headers: " + err.Error())
@@ -119,8 +141,31 @@ func (db *Database) UpdateRoute(route *config.Route) error {
 		return errors.New("database not initialized")
 	}
 
-	// Não é necessário passar um ponteiro aqui, GORM pode lidar com o valor diretamente
-	if err := db.DB.Save(route).Error; err != nil {
+	methodsJson, err := json.Marshal(route.Methods)
+	if err != nil {
+		return err
+	}
+
+	headersJson, err := json.Marshal(route.Headers) // Certifique-se de que isso também é convertido, mesmo que esteja vazio
+	if err != nil {
+		return err
+	}
+
+	requiredHeadersJson, err := json.Marshal(route.RequiredHeaders)
+	if err != nil {
+		return err
+	}
+
+	if err := db.DB.Model(&config.Route{}).
+		Where("path = ?", route.Path).
+		Updates(map[string]interface{}{
+			"service_url":      route.ServiceURL,
+			"methods":          methodsJson,
+			"headers":          headersJson, // Certifique-se de que isso é incluído, mesmo que esteja vazio
+			"description":      route.Description,
+			"is_active":        route.IsActive,
+			"required_headers": requiredHeadersJson,
+		}).Error; err != nil {
 		return fmt.Errorf("failed to update route: %w", err)
 	}
 	return nil

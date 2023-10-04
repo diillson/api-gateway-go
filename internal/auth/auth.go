@@ -2,9 +2,10 @@ package auth
 
 import (
 	"fmt"
+	"github.com/diillson/api-gateway-go/internal/logging"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	"log"
+	"go.uber.org/zap"
 	"net/http"
 	"strings"
 )
@@ -17,6 +18,13 @@ type Claims struct {
 var JwtKey = []byte("your-secret-key")
 
 func IsAuthenticated() gin.HandlerFunc {
+	logger, err := logging.NewLogger()
+	if err != nil {
+		// handle error
+		logger.Error("Error initializing logger: %v\n", zap.Error(err))
+		return nil
+	}
+
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -35,13 +43,13 @@ func IsAuthenticated() gin.HandlerFunc {
 		})
 
 		if err != nil {
-			log.Printf("Error parsing token: %v", err)
+			logger.Error("Error parsing token: %v", zap.Error(err))
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Error parsing token"})
 			return
 		}
 
 		if !token.Valid {
-			log.Println("Invalid token")
+			logger.Error("Invalid token", zap.Error(err))
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			return
 		}

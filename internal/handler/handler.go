@@ -87,41 +87,6 @@ func (h *Handler) updateRoutes() error {
 	return nil
 }
 
-//func (h *Handler) SetupRoutes(engine *gin.Engine) {
-//	for path, route := range h.routes {
-//		for _, method := range route.Methods {
-//			switch method {
-//			case "GET":
-//				engine.GET(path, h.handleRequest(route))
-//			case "POST":
-//				engine.POST(path, h.handleRequest(route))
-//				// Adicione mais métodos conforme necessário
-//			}
-//		}
-//	}
-//}
-
-//func (h *Handler) handleRequest(route *config.Route) gin.HandlerFunc {
-//	return func(c *gin.Context) {
-//		h.logger.Info("Handling request",
-//			zap.String("request path", c.Request.URL.Path),
-//			zap.String("request method", c.Request.Method),
-//			zap.String("service URL", route.ServiceURL))
-//
-//		dest, err := url.Parse(route.ServiceURL)
-//		if err != nil {
-//			h.logger.Error("Failed to parse service URL",
-//				zap.String("service URL", route.ServiceURL),
-//				zap.Error(err))
-//			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
-//			return
-//		}
-//
-//		proxy := httputil.NewSingleHostReverseProxy(dest)
-//		proxy.ServeHTTP(c.Writer, c.Request)
-//	}
-//}
-
 func (h *Handler) GetMetrics(c *gin.Context) {
 	path := c.Query("path")
 
@@ -171,7 +136,7 @@ func (h *Handler) RegisterAPI(c *gin.Context) {
 		err = h.db.AddRoute(&newRoute)
 		if err != nil {
 			h.logger.Error("Failed to add route to database", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register the new API"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register the new API, Is Incorrect or Route already exists"})
 			return
 		}
 	}
@@ -182,7 +147,32 @@ func (h *Handler) RegisterAPI(c *gin.Context) {
 		return
 	}
 
+	// Log info about the registered routes
+	h.logger.Info("Routes registered successfully",
+		zap.Int("totalRoutes", len(newRoutes)),
+		zap.Strings("routes", getRoutePaths(newRoutes))) // Example of logging the paths of the registered routes
+
 	c.JSON(http.StatusCreated, newRoutes)
+}
+
+// Helper function to extract paths from the routes
+func getRoutePaths(routes []config.Route) []string {
+	var paths []string
+	for _, route := range routes {
+		paths = append(paths, route.Path)
+	}
+	return paths
+}
+
+func RouteExists(engine *gin.Engine, methods []string, path string) bool {
+	for _, route := range engine.Routes() {
+		for _, method := range methods {
+			if route.Method == method && route.Path == path {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (h *Handler) ListAPIs(c *gin.Context) {
