@@ -44,7 +44,7 @@ func main() {
 		MaxIdleConns:    5,
 		MaxOpenConns:    10,
 		ConnMaxLifetime: 5 * time.Minute,
-		LogLevel:        database.LogLevelInfo,
+		LogLevel:        4,
 		SlowThreshold:   200 * time.Millisecond,
 		MigrationDir:    migrationDir,
 	}
