@@ -74,7 +74,7 @@ jobs:
           go build -ldflags="-w -s -X main.version=$VERSION" -o apigateway ./cmd/apigateway
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: apigateway
           path: apigateway
