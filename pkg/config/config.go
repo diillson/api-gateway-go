@@ -45,6 +45,7 @@ type DatabaseConfig struct {
 	LogLevel        string
 	SlowThreshold   time.Duration
 	MigrationDir    string
+	SkipMigrations  bool
 }
 
 // CacheConfig contém configurações do cache
@@ -167,7 +168,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.tls", false)
 
 	// Banco de dados
-	v.SetDefault("database.driver", "sqlite")
+	v.SetDefault("database.driver", "postgres")
 	v.SetDefault("database.dsn", "./routes.db")
 	v.SetDefault("database.maxIdleConns", 10)
 	v.SetDefault("database.maxOpenConns", 50)
@@ -225,7 +226,7 @@ func validateConfig(config *Config) error {
 	// Validar JWT Secret
 	if config.Auth.Enabled && config.Auth.JWTSecret == "" {
 		// Gerar um aviso se o segredo JWT não estiver definido
-		fmt.Println("AVISO: JWT_SECRET não está definido. Uma chave temporária será gerada, mas isso não é recomendado para produção.")
+		fmt.Println("AVISO: JWT_SECRET_KEY não está definido. Uma chave temporária será gerada, mas isso não é recomendado para produção.")
 	}
 
 	// Validar configuração de TLS

@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"github.com/diillson/api-gateway-go/internal/app/route"
-	"github.com/diillson/api-gateway-go/internal/domain/model"
 	"net/http"
 	"os"
 	"runtime"
@@ -160,10 +159,10 @@ func (h *HealthChecker) ReadinessCheck(c *gin.Context) {
 // DetailedHealth fornece informações detalhadas sobre o sistema
 func (h *HealthChecker) DetailedHealth(c *gin.Context) {
 	// Apenas para administradores
-	if !isAdmin(c) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Acesso negado"})
-		return
-	}
+	//if !isAdmin(c) {
+	//	c.JSON(http.StatusForbidden, gin.H{"error": "Acesso negado"})
+	//	return
+	//}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
@@ -221,18 +220,6 @@ func (h *HealthChecker) DetailedHealth(c *gin.Context) {
 	}
 
 	c.JSON(status, details)
-}
-
-// isAdmin verifica se o usuário é administrador
-func isAdmin(c *gin.Context) bool {
-	// Implementação depende do seu sistema de autenticação
-	userValue, exists := c.Get("user")
-	if !exists {
-		return false
-	}
-
-	user, ok := userValue.(*model.User)
-	return ok && user.Role == "admin"
 }
 
 // getVersion retorna a versão do aplicativo

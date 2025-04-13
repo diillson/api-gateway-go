@@ -24,6 +24,7 @@ type Config struct {
 	LogLevel        logger.LogLevel
 	SlowThreshold   time.Duration
 	MigrationDir    string
+	SkipMigrations  bool
 }
 
 // Database gerencia a conexão com o banco de dados
@@ -97,9 +98,13 @@ func NewDatabase(ctx context.Context, config Config, zapLogger *zap.Logger) (*Da
 		migration: migration,
 	}
 
-	// Aplicar migrações
-	if err := database.migrate(ctx); err != nil {
-		return nil, fmt.Errorf("falha ao aplicar migrações: %w", err)
+	// Aplicar migrações apenas se não forem puladas
+	if !config.SkipMigrations {
+		if err := database.migrate(ctx); err != nil {
+			return nil, fmt.Errorf("falha ao aplicar migrações: %w", err)
+		}
+	} else {
+		zapLogger.Info("Migrações foram puladas devido à configuração")
 	}
 
 	return database, nil

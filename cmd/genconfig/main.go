@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/diillson/api-gateway-go/pkg/config"
@@ -42,7 +43,7 @@ func main() {
 			Domains:        []string{"api.example.com"},
 		},
 		Database: config.DatabaseConfig{
-			Driver:          "sqlite",
+			Driver:          "postgres",
 			DSN:             "./routes.db",
 			MaxIdleConns:    10,
 			MaxOpenConns:    50,
@@ -50,6 +51,7 @@ func main() {
 			LogLevel:        "warn",
 			SlowThreshold:   200 * time.Millisecond,
 			MigrationDir:    "./migrations",
+			SkipMigrations:  false, // Opção: false aplica migrações (padrão), true pula
 		},
 		Cache: config.CacheConfig{
 			Enabled:     true,
@@ -110,8 +112,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Adicionar comentário documentando a opção skipmigrations
+	yamlStr := string(data)
+
+	// Usar regex para encontrar a linha com skipmigrations e adicionar o comentário após o valor
+	re := regexp.MustCompile(`(\s+skipmigrations:\s+false)`)
+	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Opção: false aplica migrações (padrão), true pula`)
+
 	// Escrever arquivo
-	err = os.WriteFile(outputPath, data, 0644)
+	err = os.WriteFile(outputPath, []byte(yamlStr), 0644)
 	if err != nil {
 		fmt.Printf("Erro ao escrever arquivo: %v\n", err)
 		os.Exit(1)

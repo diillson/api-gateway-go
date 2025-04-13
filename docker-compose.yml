@@ -29,6 +29,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    networks:
+      - api-gateway-network
 
   postgres:
     image: postgres:15-alpine
@@ -46,6 +48,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 3
+    networks:
+      - api-gateway-network
 
   redis:
     image: redis:7-alpine
@@ -59,6 +63,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    networks:
+      - api-gateway-network
 
   prometheus:
     image: prom/prometheus:v2.43.0
@@ -74,6 +80,8 @@ services:
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
       - '--web.enable-lifecycle'
+    networks:
+      - api-gateway-network
 
   grafana:
     image: grafana/grafana:9.5.1
@@ -86,9 +94,16 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     restart: unless-stopped
     depends_on:
       - prometheus
+    networks:
+      - api-gateway-network
+
+networks:
+  api-gateway-network:
+   driver: bridge
 
 volumes:
   postgres_data:

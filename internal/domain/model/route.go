@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -69,4 +70,42 @@ func (r *Route) Validate() error {
 	}
 
 	return nil
+}
+
+func MatchRoutePath(registeredPath, requestPath string) bool {
+	// Correspondência exata
+	if registeredPath == requestPath {
+		return true
+	}
+
+	// Verificar correspondência de wildcard
+	if strings.HasSuffix(registeredPath, "/*") {
+		prefix := strings.TrimSuffix(registeredPath, "/*")
+		return strings.HasPrefix(requestPath, prefix)
+	}
+
+	// Verificar formato com placeholders (ex: /weather/:cep)
+	if strings.Contains(registeredPath, ":") {
+		regParts := strings.Split(registeredPath, "/")
+		reqParts := strings.Split(requestPath, "/")
+
+		if len(regParts) != len(reqParts) {
+			return false
+		}
+
+		for i := 0; i < len(regParts); i++ {
+			if strings.HasPrefix(regParts[i], ":") {
+				// Placeholder, aceita qualquer valor
+				continue
+			}
+
+			if regParts[i] != reqParts[i] {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
 }

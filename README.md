@@ -21,7 +21,7 @@ Um API Gateway robusto, escalável e de alto desempenho escrito em Go. Ideal par
     
 ## 📋 Pré-requisitos
     
-- Go 1.21 ou superior
+- Go 1.23 ou superior
 - Docker e Docker Compose (para desenvolvimento e teste)
 - Banco de dados compatível (SQLite, PostgreSQL ou MySQL)
 - Redis (opcional, para cache distribuído)
@@ -44,8 +44,12 @@ Um API Gateway robusto, escalável e de alto desempenho escrito em Go. Ideal par
   # Executar migrações
   go run cmd/apigateway/main.go migrate
   
+  # Usando a ferramenta CLI incluída para criar admin
+  go run cmd/tools/create_admin.go -username "admin" -password "senha123" --email "admin@example.com" -driver postgres -dsn "postgres://postgres:postgres@localhost:5432/apigateway?sslmode=disable"
+    
   # Gerar token para acesso administrativo
-  go run cmd/tools/generate_token.go
+  # Usando a ferramenta CLI incluída para gerar token
+  go run cmd/tools/generate_token.go -user_id "ID GERADO AO CRIAR O USUÁRIO"
     
   # Iniciar o servidor
   go run cmd/apigateway/main.go server
@@ -62,6 +66,8 @@ Um API Gateway robusto, escalável e de alto desempenho escrito em Go. Ideal par
     # Parar todos os serviços
     docker-compose down
 ```
+
+# 🤓 O API GATEWAY NO DETALHE 🤩 
 
 ## ⚙️ Configuração
 
@@ -81,11 +87,12 @@ O API Gateway pode ser configurado através de:
        idleTimeout: "30s"
 
     database:
-       driver: "sqlite"              # Opções: sqlite, postgres, mysql
+       driver: "postgres"              # Opções: sqlite, postgres, mysql
        dsn: "./data/routes.db"       # Formato DSN específico para cada driver
        maxIdleConns: 10
        maxOpenConns: 50
        connMaxLifetime: "1h"
+      # skipmigrations: true (Apenas usar se for pular as migrações pois default é false)       
 
     cache:
        enabled: true
@@ -144,10 +151,13 @@ O API Gateway pode ser configurado através de:
 
 ### Gerando um Token JWT para Acesso Administrativo
 
-Para acessar a área administrativa, você precisa gerar um token JWT válido:
+Para acessar a área administrativa, você precisa gerar um usuário Admin e um token JWT válido:
 ```bash
-    # Usando a ferramenta CLI incluída
-    go run cmd/tools/generate_token.go
+    # Usando a ferramenta CLI incluída para gerar admin
+    go run cmd/tools/create_admin.go -username "admin" -password "senha123" --email "admin@example.com" -driver postgres -dsn "postgres://postgres:postgres@localhost:5432/apigateway?sslmode=disable"
+    
+    # Usando a ferramenta CLI incluída para gerar token
+    go run cmd/tools/generate_token.go -user_id "ID GERADO AO CRIAR O USUÁRIO"
 ```
 
 ## 🔒 JWT API Gateway no Detalhe
@@ -156,15 +166,15 @@ Para acessar a área administrativa, você precisa gerar um token JWT válido:
     
     O segredo JWT é usado para assinar e verificar tokens de autenticação. É crucial configurá-lo corretamente para segurança.
     
-    **Opções para configurar o segredo JWT (em ordem de prioridade):**
+**Opções para configurar o segredo JWT (em ordem de prioridade):**
     
 1. **Via variável de ambiente:**
  ```bash
-       export JWT_SECRET=sua-chave-secreta-muito-longa-e-aleatoria
+       export JWT_SECRET_KEY=sua-chave-secreta-muito-longa-e-aleatoria
 ```
 2. Via variável de ambiente com prefixo AG:
 ```bash
-   export AG_AUTH_JWTSECRET=sua-chave-secreta-muito-longa-e-aleatoria
+   export AG_AUTH_JWT_SECRET_KEY=sua-chave-secreta-muito-longa-e-aleatoria
 ```
 
 3. No arquivo de configuração  config.yaml :
@@ -183,7 +193,7 @@ Para gerar uma chave segura para produção, você pode usar:
     openssl rand -base64 64
     
     # Configure-a como variável de ambiente
-    export JWT_SECRET=$(openssl rand -base64 64)
+    export JWT_SECRET_KEY=$(openssl rand -base64 64)
 ```  
     
 ## Notas Importantes
@@ -203,12 +213,12 @@ Isto gerará um token JWT válido que você pode usar para autenticar requisiç�
 
 ### Autenticação via API
 
-Também é possível obter um token via API (se configurada):
+Também é possível obter um token via API apartir do usuário admin criado anteriormente (se configurada):
 ```bash
     # Login para obter token JWT
     curl -X POST http://localhost:8080/auth/login \
       -H "Content-Type: application/json" \
-      -d '{"username":"admin","password":"admin123"}'
+      -d '{"username":"admin","password":"senha123"}'
 ````
 ### Usando o Token nas Requisições
 
@@ -217,23 +227,57 @@ Use o token obtido nos cabeçalhos de suas requisições:
     curl -X GET http://localhost:8080/admin/apis \
       -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
-### Criando Novos Usuários
 
-Para criar novos usuários com acesso ao sistema:
+## Gerenciando Usuários
+
+### Obter Token de Admin
+
+Primeiro, você precisa obter um token de autenticação:
 ```bash
-    # Usando a ferramenta CLI para criar usuário
-    go run cmd/adduser/main.go -username admin -password admin123 -email admin@example.com -role admin
-    
-    # Ou via API (requer autenticação de administrador)
+    curl -X POST http://localhost:8080/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{
+        "username": "admin",
+        "password": "sua-senha-admin"  'senha inicial é: senha123'
+      }'
+```
+### 1. Listar Usuários
+```bash
+    curl -X GET http://localhost:8080/admin/users \
+      -H "Authorization: Bearer seu-token-aqui"
+```
+### 2. Criar Novo Usuário
+```bash
     curl -X POST http://localhost:8080/admin/users \
       -H "Authorization: Bearer seu-token-aqui" \
       -H "Content-Type: application/json" \
       -d '{
-        "username": "novo_usuario",
+        "username": "novouser",
         "password": "senha123",
-        "email": "usuario@exemplo.com",
+        "email": "novouser@exemplo.com",
         "role": "user"
       }'
+```
+### 3. Obter Usuário por ID
+```bash
+    curl -X GET http://localhost:8080/admin/users/id-do-usuario \
+      -H "Authorization: Bearer seu-token-aqui"
+```
+### 4. Atualizar Usuário
+```bash
+    curl -X PUT http://localhost:8080/admin/users/id-do-usuario \
+      -H "Authorization: Bearer seu-token-aqui" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "username": "usernovo",
+        "password": "novasenha123",
+        "role": "editor"
+      }'
+```
+### 5. Excluir Usuário
+```bash
+    curl -X DELETE http://localhost:8080/admin/users/id-do-usuario \
+      -H "Authorization: Bearer seu-token-aqui"
 ```
 ## 📝 Uso da API
 
@@ -245,7 +289,7 @@ O API Gateway atua como um proxy reverso, redirecionando requisições para serv
 
 Existem duas maneiras de cadastrar rotas:
 
-1. Via arquivo JSON (em  config/routes.json ):
+1. Via arquivo JSON (em config/routes.json ):
 ```json
     [
       {
@@ -266,13 +310,43 @@ Existem duas maneiras de cadastrar rotas:
       -H "Authorization: Bearer seu-token-aqui" \
       -H "Content-Type: application/json" \
       -d '{
-        "path": "/api/products",
+        "path": "/api/products/",
         "serviceURL": "http://product-service:8001",
         "methods": ["GET", "POST"],
         "description": "Serviço de produtos",
         "isActive": true,
         "requiredHeaders": ["X-Request-ID"]
       }'
+      
+      OU
+      
+    # Registrar nova rota com parametros
+    curl -X POST http://localhost:8080/admin/register \
+      -H "Authorization: Bearer seu-token-aqui" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "path": "/api/products/:parametro",
+        "serviceURL": "http://product-service:8001",
+        "methods": ["GET"],
+        "description": "Serviço de produtos",
+        "isActive": true,
+        "requiredHeaders": ["X-Request-ID"]
+      }'
+      
+      OU
+      
+    # Registrar nova rota curinga
+    curl -X POST http://localhost:8080/admin/register \
+      -H "Authorization: Bearer seu-token-aqui" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "path": "/api/products/*",
+        "serviceURL": "http://product-service:8001",
+        "methods": ["GET", "PUT"],
+        "description": "Serviço de produtos",
+        "isActive": true,
+        "requiredHeaders": ["X-Request-ID"]
+      }'  
 ```
 ### Listagem e Gerenciamento de Rotas
 ```bash
@@ -424,7 +498,7 @@ O API Gateway oferece endpoints de health check para monitoramento:
     curl -X GET http://localhost:8080/health/readiness
     
     # Verificação detalhada de saúde (requer autenticação admin)
-    curl -X GET http://localhost:8080/health/detailed \
+    curl -X GET http://localhost:8080/admin/health/detailed \
       -H "Authorization: Bearer seu-token-aqui"
 ```
 ### Diagnosticando Problemas

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -77,6 +78,8 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
+
+		// Preserva o caminho e a query string
 		req.URL.Path = r.URL.Path
 		req.URL.RawQuery = r.URL.RawQuery
 
@@ -100,12 +103,31 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 			zap.String("serviceURL", route.ServiceURL),
 			zap.Error(err))
 
-		// Registrar erro nas métricas
-		if p.metrics != nil {
-			p.metrics.RequestError(r.URL.Path, r.Method, "proxy_error")
+		// Determinar o tipo de erro com base na causa
+		var errorType string
+		var statusCode int
+
+		// Analisar o erro para determinar o tipo apropriado
+		if strings.Contains(err.Error(), "context deadline exceeded") {
+			errorType = "timeout_error"
+			statusCode = http.StatusGatewayTimeout
+		} else if strings.Contains(err.Error(), "connection refused") {
+			errorType = "connection_refused"
+			statusCode = http.StatusServiceUnavailable
+		} else if strings.Contains(err.Error(), "no such host") {
+			errorType = "host_not_found"
+			statusCode = http.StatusBadGateway
+		} else {
+			errorType = "proxy_error"
+			statusCode = http.StatusBadGateway
 		}
 
-		http.Error(w, "Erro ao encaminhar requisição", http.StatusBadGateway)
+		// Registrar erro nas métricas com tipo específico
+		if p.metrics != nil {
+			p.metrics.RequestError(r.URL.Path, r.Method, errorType)
+		}
+
+		http.Error(w, "Erro ao encaminhar requisição: "+err.Error(), statusCode)
 	}
 
 	// Executa o proxy

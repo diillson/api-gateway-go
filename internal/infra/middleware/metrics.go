@@ -89,10 +89,45 @@ func (m *MetricsMiddleware) Middleware() gin.HandlerFunc {
 
 		// Registrar erros, se houver
 		if c.Writer.Status() >= 400 {
-			errorType := "client_error"
-			if c.Writer.Status() >= 500 {
-				errorType = "server_error"
+			// Usar código de status como tipo de erro para mais detalhes
+			statusCode := c.Writer.Status()
+			var errorType string
+
+			// Mapear códigos de status para tipos de erro mais específicos
+			switch statusCode {
+			case 400:
+				errorType = "bad_request"
+			case 401:
+				errorType = "unauthorized"
+			case 403:
+				errorType = "forbidden"
+			case 404:
+				errorType = "not_found"
+			case 405:
+				errorType = "method_not_allowed"
+			case 408:
+				errorType = "request_timeout"
+			case 409:
+				errorType = "conflict"
+			case 429:
+				errorType = "too_many_requests"
+			case 500:
+				errorType = "internal_server_error"
+			case 502:
+				errorType = "bad_gateway"
+			case 503:
+				errorType = "service_unavailable"
+			case 504:
+				errorType = "gateway_timeout"
+			default:
+				// Fallback para as categorias gerais
+				if statusCode >= 500 {
+					errorType = "server_error_" + strconv.Itoa(statusCode)
+				} else {
+					errorType = "client_error_" + strconv.Itoa(statusCode)
+				}
 			}
+
 			m.metrics.RequestError(path, method, errorType)
 		}
 	}

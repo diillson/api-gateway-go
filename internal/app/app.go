@@ -102,6 +102,12 @@ func NewApp(logger *zap.Logger) (*App, error) {
 	// Inicializar handlers HTTP com métricas
 	handler := http.NewHandler(routeService, reverseProxy, db, memCache, logger)
 
+	// Carregar rotas do arquivo JSON se existir
+	jsonLoader := database.NewJSONRouteLoader(db, logger)
+	if err := jsonLoader.LoadRoutesFromJSON("./config/routes.json"); err != nil {
+		logger.Error("Erro ao carregar rotas do arquivo JSON", zap.Error(err))
+	}
+
 	// Configurar métricas no handler
 	handler.SetMetrics(apiMetrics)
 
@@ -122,7 +128,7 @@ func (a *App) RegisterRoutes(router *gin.Engine) {
 	// Configurar middleware global
 	router.Use(a.Middleware.Recovery())
 	router.Use(a.Middleware.Logger())
-	router.Use(a.Middleware.Metrics()) // Adicionar middleware de métricas globalmente
+	router.Use(a.Middleware.Metrics())
 
 	userHandler := http.NewUserHandler(a.DB.DB(), a.Logger)
 
@@ -130,6 +136,17 @@ func (a *App) RegisterRoutes(router *gin.Engine) {
 	auth := router.Group("/auth")
 	{
 		auth.POST("/login", userHandler.Login)
+	}
+
+	// Rotas para gerenciamento de usuários
+	users := router.Group("/admin/users")
+	users.Use(a.Middleware.Authenticate)
+	{
+		users.POST("", userHandler.RegisterUser)     // Criar novo usuário
+		users.GET("", userHandler.GetUsers)          // Listar todos os usuários
+		users.GET("/:id", userHandler.GetUserByID)   // Obter usuário por ID
+		users.PUT("/:id", userHandler.UpdateUser)    // Atualizar usuário
+		users.DELETE("/:id", userHandler.DeleteUser) // Excluir usuário
 	}
 
 	// Expor endpoint de métricas para Prometheus
@@ -150,9 +167,10 @@ func (a *App) RegisterRoutes(router *gin.Engine) {
 		admin.PUT("/update", a.Handler.UpdateAPI)
 		admin.DELETE("/delete", a.Handler.DeleteAPI)
 		admin.GET("/metrics", a.Handler.GetMetrics)
-		admin.POST("/users", userHandler.RegisterUser)
+		//admin.POST("/users", userHandler.RegisterUser)
 		admin.GET("/clear-cache", a.Handler.ClearCache)
 		admin.GET("/diagnose-route", a.Handler.DiagnoseRoute)
+		admin.GET("/health/detailed", a.Handler.DetailedHealth)
 	}
 
 	router.Any("/api/*path", a.Handler.ServeAPI)

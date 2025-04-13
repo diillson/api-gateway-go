@@ -72,23 +72,34 @@ func (s *Service) GetRouteByPath(ctx context.Context, path string) (*model.Route
 		return &route, nil
 	}
 
-	// Se não estiver no cache, buscar do repositório
+	// Se não estiver no cache, buscar todas as rotas do repositório
 	s.logger.Info("Rota não encontrada no cache, buscando do repositório", zap.String("path", path))
-	routePtr, err := s.repo.GetRouteByPath(ctx, path)
+	routes, err := s.repo.GetRoutes(ctx)
 	if err != nil {
-		s.logger.Error("Erro ao buscar rota do repositório", zap.String("path", path), zap.Error(err))
+		s.logger.Error("Erro ao buscar rotas do repositório", zap.Error(err))
 		return nil, err
 	}
 
-	// Armazenar no cache para futuras requisições
-	if err := s.cache.Set(ctx, cacheKey, routePtr, 5*time.Minute); err != nil {
-		s.logger.Warn("Erro ao armazenar rota no cache", zap.Error(err))
+	// Percorrer todas as rotas e verificar correspondência
+	for _, r := range routes {
+		if model.MatchRoutePath(r.Path, path) {
+			// Armazenar no cache para futuras requisições
+			if err := s.cache.Set(ctx, cacheKey, r, 5*time.Minute); err != nil {
+				s.logger.Warn("Erro ao armazenar rota no cache", zap.Error(err))
+			}
+
+			s.logger.Info("Rota encontrada no repositório com correspondência de padrão",
+				zap.String("registeredPath", r.Path),
+				zap.String("requestPath", path),
+				zap.String("serviceURL", r.ServiceURL))
+			return r, nil
+		}
 	}
 
-	s.logger.Info("Rota encontrada no repositório",
-		zap.String("path", routePtr.Path),
-		zap.String("serviceURL", routePtr.ServiceURL))
-	return routePtr, nil
+	// Se não encontrou correspondência
+	s.logger.Error("Nenhuma rota correspondente encontrada",
+		zap.String("path", path))
+	return nil, repository.ErrRouteNotFound
 }
 
 // ClearCache limpa o cache de rotas
