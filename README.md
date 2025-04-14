@@ -238,7 +238,7 @@ Primeiro, você precisa obter um token de autenticação:
       -H "Content-Type: application/json" \
       -d '{
         "username": "admin",
-        "password": "sua-senha-admin"  'senha inicial é: senha123'
+        "password": "sua-senha-admin"
       }'
 ```
 ### 1. Listar Usuários
