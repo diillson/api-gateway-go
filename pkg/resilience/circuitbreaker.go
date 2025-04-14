@@ -3,7 +3,12 @@ package resilience
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/diillson/api-gateway-go/internal/infra/metrics"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"sync"
 	"time"
 
@@ -50,6 +55,7 @@ type CircuitBreaker struct {
 
 	logger  *zap.Logger
 	metrics *metrics.APIMetrics
+	tracer  trace.Tracer
 }
 
 // NewCircuitBreaker cria um novo circuit breaker
@@ -68,6 +74,9 @@ func NewCircuitBreaker(config CircuitBreakerConfig, logger *zap.Logger, metrics 
 		config.MaxRequests = 1
 	}
 
+	// Obter tracer para o Circuit Breaker
+	tracer := otel.GetTracerProvider().Tracer("api-gateway.circuit_breaker")
+
 	return &CircuitBreaker{
 		name:                config.Name,
 		maxFails:            config.MaxRequestsFail,
@@ -78,22 +87,82 @@ func NewCircuitBreaker(config CircuitBreakerConfig, logger *zap.Logger, metrics 
 		lastStateChangeTime: time.Now(),
 		logger:              logger,
 		metrics:             metrics,
+		tracer:              tracer,
 	}
 }
 
 // Execute executa a função com circuit breaker
 func (cb *CircuitBreaker) Execute(ctx context.Context, fn func(context.Context) (interface{}, error)) (interface{}, error) {
+	// Criar span para a execução do Circuit Breaker
+	ctx, span := cb.tracer.Start(
+		ctx,
+		fmt.Sprintf("CircuitBreaker:%s", cb.name),
+		trace.WithAttributes(
+			attribute.String("circuit_breaker.name", cb.name),
+			attribute.Int("circuit_breaker.max_fails", cb.maxFails),
+			attribute.String("circuit_breaker.state", getStateString(cb.state)),
+		),
+	)
+	defer span.End()
+
 	if !cb.allowRequest() {
+		// Registrar rejeição da requisição devido ao circuito aberto
+		span.SetStatus(codes.Error, "circuit breaker is open")
+		span.SetAttributes(
+			attribute.Bool("circuit_breaker.request_rejected", true),
+			attribute.String("circuit_breaker.state", getStateString(cb.state)),
+		)
 		return nil, ErrCircuitOpen
 	}
 
+	// Criar sub-span para a função executada
+	childCtx, childSpan := cb.tracer.Start(
+		ctx,
+		fmt.Sprintf("CircuitBreaker:%s:Execute", cb.name),
+	)
+
 	// Permitir a requisição
-	result, err := fn(ctx)
+	result, err := fn(childCtx)
+
+	// Fechar o span da função
+	if err != nil {
+		childSpan.SetStatus(codes.Error, err.Error())
+		childSpan.SetAttributes(attribute.Bool("error", true))
+	} else {
+		childSpan.SetStatus(codes.Ok, "")
+	}
+	childSpan.End()
 
 	// Atualizar o estado do circuit breaker com base no resultado
 	cb.recordResult(err == nil)
 
+	// Adicionar informações finais ao span principal
+	span.SetAttributes(
+		attribute.String("circuit_breaker.final_state", getStateString(cb.state)),
+		attribute.Bool("circuit_breaker.operation_successful", err == nil),
+	)
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
+
 	return result, err
+}
+
+// Função auxiliar para converter estado em string para telemetria
+func getStateString(state CircuitState) string {
+	switch state {
+	case StateClose:
+		return "closed"
+	case StateOpen:
+		return "open"
+	case StateHalfOpen:
+		return "half-open"
+	default:
+		return "unknown"
+	}
 }
 
 // allowRequest verifica se a requisição deve ser permitida com base no estado atual

@@ -15,6 +15,7 @@ import (
 	"github.com/diillson/api-gateway-go/pkg/config"
 	"github.com/diillson/api-gateway-go/pkg/security"
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	net2 "net/http"
@@ -65,8 +66,78 @@ func NewApp(logger *zap.Logger) (*App, error) {
 		Metrics: apiMetrics,
 		Logger:  logger,
 	}
-	// Inicializar cache em memória
-	memCache := cache.NewMemoryCache(5*time.Minute, 10*time.Minute, apiMetrics, logger)
+
+	// Inicializar o cache apropriado com base na configuração
+	var cacheInstance cache.Cache
+	if !cfg.Cache.Enabled {
+		logger.Info("Cache desabilitado pela configuração")
+		cacheInstance = &cache.NoOpCache{}
+	} else if cfg.Cache.Type == "redis" {
+		logger.Info("Inicializando cache Redis",
+			zap.String("address", cfg.Cache.Redis.Address),
+			zap.Int("db", cfg.Cache.Redis.DB),
+			zap.Duration("ttl", cfg.Cache.TTL))
+
+		// Criar opções avançadas para o Redis
+		redisOptions := &redis.Options{
+			Addr:         cfg.Cache.Redis.Address,
+			Password:     cfg.Cache.Redis.Password,
+			DB:           cfg.Cache.Redis.DB,
+			PoolSize:     cfg.Cache.Redis.PoolSize,
+			MinIdleConns: cfg.Cache.Redis.MinIdleConns,
+			MaxRetries:   cfg.Cache.Redis.MaxRetries,
+			ReadTimeout:  cfg.Cache.Redis.ReadTimeout,
+			WriteTimeout: cfg.Cache.Redis.WriteTimeout,
+			DialTimeout:  cfg.Cache.Redis.DialTimeout,
+			PoolTimeout:  cfg.Cache.Redis.PoolTimeout,
+			IdleTimeout:  cfg.Cache.Redis.IdleTimeout,
+			MaxConnAge:   cfg.Cache.Redis.MaxConnAge,
+		}
+
+		// Criar o cliente Redis usando as opções avançadas
+		redisClient := redis.NewClient(redisOptions)
+
+		// Verificar a conexão
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingErr := redisClient.Ping(ctx).Err()
+		cancel()
+
+		if pingErr != nil {
+			logger.Error("Falha ao conectar ao Redis, usando cache em memória",
+				zap.Error(pingErr),
+				zap.String("redis.address", cfg.Cache.Redis.Address))
+			// Fallback para cache em memória em caso de erro
+			cacheInstance = cache.NewMemoryCache(cfg.Cache.TTL, 10*time.Minute, apiMetrics, logger)
+		} else {
+			// Criar o cache Redis com o cliente já configurado e conectado
+			cacheInstance, err = cache.NewRedisCache(
+				cfg.Cache.Redis.Address,
+				cfg.Cache.Redis.Password,
+				cfg.Cache.Redis.DB,
+				logger,
+			)
+			if err != nil {
+				logger.Error("Falha ao inicializar cache Redis, usando cache em memória",
+					zap.Error(err),
+					zap.String("redis.address", cfg.Cache.Redis.Address))
+				// Fallback para cache em memória
+				cacheInstance = cache.NewMemoryCache(
+					cfg.Cache.TTL,
+					10*time.Minute,
+					apiMetrics,
+					logger,
+				)
+			} else {
+				logger.Info("Cache Redis inicializado com sucesso")
+			}
+		}
+	} else {
+		// Cache em memória (padrão)
+		logger.Info("Inicializando cache em memória",
+			zap.Duration("ttl", cfg.Cache.TTL),
+			zap.Int("maxItems", cfg.Cache.MaxItems))
+		cacheInstance = cache.NewMemoryCache(cfg.Cache.TTL, 10*time.Minute, apiMetrics, logger)
+	}
 
 	// Inicializar repositórios
 	routeRepo := database.NewRouteRepository(db.DB(), logger)
@@ -80,16 +151,16 @@ func NewApp(logger *zap.Logger) (*App, error) {
 
 	// Inicializar serviços
 	authService := auth.NewAuthService(keyManager, userRepo, logger)
-	routeService := route.NewService(routeRepo, memCache, logger)
+	routeService := route.NewService(routeRepo, cacheInstance, logger)
 
 	// Inicializar serviços de domínio
-	services, err := service.NewServices(routeRepo, userRepo, memCache, logger)
+	services, err := service.NewServices(routeRepo, userRepo, cacheInstance, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Inicializar proxy reverso com métricas
-	reverseProxy := proxy.NewReverseProxy(memCache, logger)
+	reverseProxy := proxy.NewReverseProxy(cacheInstance, logger)
 	reverseProxy.SetMetrics(apiMetrics)
 
 	// Inicializar middleware com as métricas já criadas
@@ -100,7 +171,7 @@ func NewApp(logger *zap.Logger) (*App, error) {
 	middlewares.SetMetricsMiddleware(metricsMiddleware)
 
 	// Inicializar handlers HTTP com métricas
-	handler := http.NewHandler(routeService, reverseProxy, db, memCache, logger)
+	handler := http.NewHandler(routeService, reverseProxy, db, cacheInstance, logger)
 
 	// Carregar rotas do arquivo JSON se existir
 	jsonLoader := database.NewJSONRouteLoader(db, logger)
@@ -117,7 +188,7 @@ func NewApp(logger *zap.Logger) (*App, error) {
 		Handler:        handler,
 		Middleware:     middlewares,
 		Services:       services,
-		Cache:          memCache,
+		Cache:          cacheInstance,
 		MetricsHandler: metricsHandler,
 		APIMetrics:     apiMetrics,
 	}, nil
@@ -128,6 +199,7 @@ func (a *App) RegisterRoutes(router *gin.Engine) {
 	// Configurar middleware global
 	router.Use(a.Middleware.Recovery())
 	router.Use(a.Middleware.Logger())
+	router.Use(a.Middleware.Tracing())
 	router.Use(a.Middleware.Metrics())
 
 	userHandler := http.NewUserHandler(a.DB.DB(), a.Logger)

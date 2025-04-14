@@ -1,10 +1,12 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/diillson/api-gateway-go/internal/domain/model"
 	"go.uber.org/zap"
@@ -55,20 +57,24 @@ func (l *JSONRouteLoader) LoadRoutesFromJSON(filePath string) error {
 	// Criar o repositório de rotas
 	repo := NewRouteRepository(l.db.DB(), l.logger)
 
+	// Criar um contexto válido com timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	// Inserir ou atualizar cada rota
 	for _, route := range routes {
 		// Verificar se a rota já existe
-		_, err := repo.GetRouteByPath(nil, route.Path)
+		_, err := repo.GetRouteByPath(ctx, route.Path)
 		if err == nil {
 			// Rota existe, atualizar
 			l.logger.Debug("Atualizando rota existente", zap.String("path", route.Path))
-			if err := repo.UpdateRoute(nil, route); err != nil {
+			if err := repo.UpdateRoute(ctx, route); err != nil {
 				l.logger.Error("Erro ao atualizar rota", zap.String("path", route.Path), zap.Error(err))
 			}
 		} else {
 			// Rota não existe, inserir
 			l.logger.Debug("Inserindo nova rota", zap.String("path", route.Path))
-			if err := repo.AddRoute(nil, route); err != nil {
+			if err := repo.AddRoute(ctx, route); err != nil {
 				l.logger.Error("Erro ao inserir rota", zap.String("path", route.Path), zap.Error(err))
 			}
 		}

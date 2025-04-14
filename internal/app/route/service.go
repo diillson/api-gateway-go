@@ -54,44 +54,49 @@ func (s *Service) GetRoutes(ctx context.Context) ([]*model.Route, error) {
 	return routes, nil
 }
 
-// GetRouteByPath obtém uma rota pelo caminho
 func (s *Service) GetRouteByPath(ctx context.Context, path string) (*model.Route, error) {
 	// Adicione log para debug
 	s.logger.Info("Buscando rota", zap.String("path", path))
 
-	var route model.Route
+	// Primeiro buscar todas as rotas do repositório ou cache
+	var routes []*model.Route
 
-	// Tentar cache primeiro
-	cacheKey := "route:" + path
-	found, err := s.cache.Get(ctx, cacheKey, &route)
+	// Tentar cache primeiro para a lista de rotas
+	cacheKey := "routes"
+	found, err := s.cache.Get(ctx, cacheKey, &routes)
 	if err != nil {
-		s.logger.Error("Erro ao buscar rota do cache", zap.String("path", path), zap.Error(err))
+		s.logger.Error("Erro ao buscar rotas do cache", zap.Error(err))
 		// Continue para buscar do repositório em caso de erro
-	} else if found {
-		s.logger.Info("Rota encontrada no cache", zap.String("path", path))
-		return &route, nil
-	}
+	} else if !found {
+		// Se não estiver no cache, buscar do repositório
+		s.logger.Info("Lista de rotas não encontrada no cache, buscando do repositório")
+		routes, err = s.repo.GetRoutes(ctx)
+		if err != nil {
+			s.logger.Error("Erro ao buscar rotas do repositório", zap.Error(err))
+			return nil, err
+		}
 
-	// Se não estiver no cache, buscar todas as rotas do repositório
-	s.logger.Info("Rota não encontrada no cache, buscando do repositório", zap.String("path", path))
-	routes, err := s.repo.GetRoutes(ctx)
-	if err != nil {
-		s.logger.Error("Erro ao buscar rotas do repositório", zap.Error(err))
-		return nil, err
+		// Armazenar no cache para futuras requisições
+		if err := s.cache.Set(ctx, cacheKey, routes, 5*time.Minute); err != nil {
+			s.logger.Warn("Erro ao armazenar rotas no cache", zap.Error(err))
+		}
 	}
 
 	// Percorrer todas as rotas e verificar correspondência
 	for _, r := range routes {
 		if model.MatchRoutePath(r.Path, path) {
-			// Armazenar no cache para futuras requisições
-			if err := s.cache.Set(ctx, cacheKey, r, 5*time.Minute); err != nil {
-				s.logger.Warn("Erro ao armazenar rota no cache", zap.Error(err))
-			}
-
-			s.logger.Info("Rota encontrada no repositório com correspondência de padrão",
+			s.logger.Info("Rota encontrada com correspondência de padrão",
 				zap.String("registeredPath", r.Path),
 				zap.String("requestPath", path),
 				zap.String("serviceURL", r.ServiceURL))
+
+			// Cache individual da rota para acesso mais rápido em requisições futuras
+			// Usar o caminho da requisição como chave, não o padrão
+			routeCacheKey := "route:" + path
+			if err := s.cache.Set(ctx, routeCacheKey, r, 5*time.Minute); err != nil {
+				s.logger.Warn("Erro ao armazenar rota no cache", zap.Error(err))
+			}
+
 			return r, nil
 		}
 	}

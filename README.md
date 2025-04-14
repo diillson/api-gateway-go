@@ -97,9 +97,23 @@ O API Gateway pode ser configurado através de:
     cache:
        enabled: true
        type: "memory"                # Opções: memory, redis
-       address: "localhost:6379"     # Usado apenas para redis
-       password: ""                  # Senha do Redis (opcional)
        ttl: "5m"                     # Tempo de vida padrão para itens no cache
+    maxitems: 10000
+    maxmemorymb: 100
+    redis:  # Configurações específicas para Redis
+      address: localhost:6379  # Endereço do servidor Redis (host:port)
+      password: ""
+      db: 0
+      poolsize: 10  # Número máximo de conexões no pool
+      minidleconns: 5  # Número mínimo de conexões ociosas mantidas abertas
+      maxretries: 3  # Número máximo de tentativas de reconexão
+      readtimeout: 3s  # Timeout para operações de leitura
+      writetimeout: 3s  # Timeout para operações de escrita
+      dialtimeout: 5s  # Timeout para estabelecer nova conexão
+      pooltimeout: 4s  # Timeout para obter conexão do pool
+      idletimeout: 5m0s  # Tempo máximo que uma conexão pode ficar ociosa
+      maxconnage: 30m0s  # Tempo máximo de vida da conexão
+      connectionpoolname: ""   
 
     auth:
        enabled: true

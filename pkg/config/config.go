@@ -48,16 +48,31 @@ type DatabaseConfig struct {
 	SkipMigrations  bool
 }
 
+// RedisOptions contém configurações específicas para Redis
+type RedisOptions struct {
+	Address            string
+	Password           string
+	DB                 int
+	PoolSize           int
+	MinIdleConns       int
+	MaxRetries         int
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	DialTimeout        time.Duration
+	PoolTimeout        time.Duration
+	IdleTimeout        time.Duration
+	MaxConnAge         time.Duration
+	ConnectionPoolName string
+}
+
 // CacheConfig contém configurações do cache
 type CacheConfig struct {
 	Enabled     bool
 	Type        string // redis, memory
-	Address     string
-	Password    string
-	DB          int
 	TTL         time.Duration
 	MaxItems    int // apenas para cache em memória
 	MaxMemoryMB int // apenas para cache em memória
+	Redis       RedisOptions
 }
 
 // AuthConfig contém configurações de autenticação
@@ -177,6 +192,19 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.slowThreshold", "200ms")
 	v.SetDefault("database.migrationDir", "./migrations")
 
+	// Redis
+	v.SetDefault("cache.redis.address", "localhost:6379")
+	v.SetDefault("cache.redis.db", 0)
+	v.SetDefault("cache.redis.pool_size", 10)
+	v.SetDefault("cache.redis.min_idle_conns", 5)
+	v.SetDefault("cache.redis.max_retries", 3)
+	v.SetDefault("cache.redis.read_timeout", "3s")
+	v.SetDefault("cache.redis.write_timeout", "3s")
+	v.SetDefault("cache.redis.dial_timeout", "5s")
+	v.SetDefault("cache.redis.pool_timeout", "4s")
+	v.SetDefault("cache.redis.idle_timeout", "5m")
+	v.SetDefault("cache.redis.max_conn_age", "30m")
+
 	// Cache
 	v.SetDefault("cache.enabled", true)
 	v.SetDefault("cache.type", "memory")
@@ -249,7 +277,7 @@ func validateConfig(config *Config) error {
 			return fmt.Errorf("tipo de cache inválido: %s", config.Cache.Type)
 		}
 
-		if config.Cache.Type == "redis" && config.Cache.Address == "" {
+		if config.Cache.Type == "redis" && config.Cache.Redis.Address == "" {
 			return fmt.Errorf("tipo de cache redis requer um endereço")
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/diillson/api-gateway-go/pkg/config"
+	"github.com/diillson/api-gateway-go/pkg/telemetry"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/acme/autocert"
 	"net/http"
@@ -104,6 +106,30 @@ func main() {
 		os.Exit(1)
 	}
 	defer logger.Sync()
+
+	// Carregar configuração
+	cfg, err := config.LoadConfig("./config")
+	if err != nil {
+		logger.Fatal("Falha ao carregar configuração", zap.Error(err))
+	}
+
+	// Inicializar o tracer se estiver habilitado
+	if cfg.Tracing.Enabled {
+		tp, err := telemetry.NewTracerProvider(
+			context.Background(),
+			cfg.Tracing.ServiceName,
+			cfg.Tracing.Endpoint,
+			logger,
+		)
+		if err != nil {
+			logger.Error("Falha ao inicializar tracer", zap.Error(err))
+		} else {
+			logger.Info("Tracer inicializado com sucesso",
+				zap.String("provider", cfg.Tracing.Provider),
+				zap.String("endpoint", cfg.Tracing.Endpoint))
+			defer tp.Shutdown(context.Background())
+		}
+	}
 
 	// Inicializar aplicação
 	application, err := app.NewApp(logger)

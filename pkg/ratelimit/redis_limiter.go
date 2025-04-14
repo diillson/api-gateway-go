@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"strconv"
 	"time"
 
@@ -23,24 +27,46 @@ type LimitConfig struct {
 type RedisLimiter struct {
 	RedisClient *redis.Client
 	logger      *zap.Logger
+	tracer      trace.Tracer
 }
 
 // NewRedisLimiter cria um novo limitador baseado em Redis
 func NewRedisLimiter(redisClient *redis.Client, logger *zap.Logger) *RedisLimiter {
+	// Obter tracer para o rate limiter
+	tracer := otel.GetTracerProvider().Tracer("api-gateway.ratelimit")
+
 	return &RedisLimiter{
 		RedisClient: redisClient,
 		logger:      logger,
+		tracer:      tracer,
 	}
 }
 
 // Allow verifica se a requisição é permitida dentro do limite de taxa
 // Retorna: permitido, limite, restante, tempo de reset, erro
 func (r *RedisLimiter) Allow(ctx context.Context, config LimitConfig) (bool, int, int, time.Duration, error) {
+	// Criar span para a operação de rate limiting
+	ctx, span := r.tracer.Start(
+		ctx,
+		"RedisLimiter.Allow",
+		trace.WithAttributes(
+			attribute.String("ratelimit.key", config.Key),
+			attribute.Int("ratelimit.limit", config.Limit),
+			attribute.Int64("ratelimit.period_ms", config.Period.Milliseconds()),
+			attribute.Float64("ratelimit.burst_factor", config.BurstFactor),
+		),
+	)
+	defer span.End()
+
 	if config.Limit <= 0 {
+		span.SetStatus(codes.Error, "invalid limit")
+		span.SetAttributes(attribute.Bool("error", true))
 		return true, 0, 0, 0, errors.New("limite deve ser maior que zero")
 	}
 
 	if config.Period <= 0 {
+		span.SetStatus(codes.Error, "invalid period")
+		span.SetAttributes(attribute.Bool("error", true))
 		return true, 0, 0, 0, errors.New("período deve ser maior que zero")
 	}
 
@@ -50,14 +76,11 @@ func (r *RedisLimiter) Allow(ctx context.Context, config LimitConfig) (bool, int
 
 	// Chave do Redis para este limite específico
 	key := fmt.Sprintf("ratelimit:%s", config.Key)
-
 	// Calcular o timestamp atual em segundos
 	now := time.Now().Unix()
-
 	// Calcular o timestamp de expiração deste período
 	periodSeconds := int64(config.Period.Seconds())
 	expireAt := now - (now % periodSeconds) + periodSeconds
-
 	// Calcular o tempo restante até o reset
 	resetAfter := time.Duration(expireAt-now) * time.Second
 
@@ -83,6 +106,13 @@ func (r *RedisLimiter) Allow(ctx context.Context, config LimitConfig) (bool, int
 	result, err := script.Run(ctx, r.RedisClient, []string{key}, config.Limit, expireAt, now).Result()
 	if err != nil {
 		r.logger.Error("erro ao executar script de rate limit", zap.Error(err))
+		// Registrar erro no span
+		span.SetStatus(codes.Error, "redis script error")
+		span.SetAttributes(
+			attribute.Bool("error", true),
+			attribute.String("error.message", err.Error()),
+		)
+
 		return true, config.Limit, config.Limit, resetAfter, err
 	}
 
@@ -90,6 +120,14 @@ func (r *RedisLimiter) Allow(ctx context.Context, config LimitConfig) (bool, int
 	resultArray, ok := result.([]interface{})
 	if !ok || len(resultArray) != 3 {
 		r.logger.Error("resultado inesperado do script de rate limit", zap.Any("result", result))
+
+		// Registrar erro no span
+		span.SetStatus(codes.Error, "unexpected result")
+		span.SetAttributes(
+			attribute.Bool("error", true),
+			attribute.String("error.message", "resultado inválido do Redis"),
+		)
+
 		return true, config.Limit, config.Limit, resetAfter, errors.New("resultado inválido do Redis")
 	}
 
@@ -103,6 +141,21 @@ func (r *RedisLimiter) Allow(ctx context.Context, config LimitConfig) (bool, int
 
 	// Verificar se está dentro do limite (incluindo burst)
 	allowed := count <= burstLimit
+
+	// Adicionar resultados ao span
+	span.SetAttributes(
+		attribute.Int("ratelimit.count", count),
+		attribute.Int("ratelimit.remaining", remaining),
+		attribute.Int("ratelimit.burst_limit", burstLimit),
+		attribute.Bool("ratelimit.allowed", allowed),
+		attribute.Int64("ratelimit.reset_after_ms", int64(resetAfter.Milliseconds())),
+	)
+
+	if !allowed {
+		span.SetStatus(codes.Error, "rate limit exceeded")
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
 
 	return allowed, config.Limit, remaining, time.Duration(ttl) * time.Second, nil
 }

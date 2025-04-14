@@ -1,6 +1,7 @@
 package security
 
 import (
+	"fmt"
 	"github.com/diillson/api-gateway-go/pkg/config"
 	"os"
 )
@@ -9,6 +10,7 @@ import (
 // 1. Variável de ambiente JWT_SECRET
 // 2. Arquivo de configuração
 // 3. Fallback para valor padrão (apenas em desenvolvimento)
+// Modificar o retorno para usar um valor padrão
 func GetJWTSecret() []byte {
 	// Primeiro, tentar obter da variável de ambiente
 	secret := os.Getenv("JWT_SECRET_KEY")
@@ -30,6 +32,7 @@ func GetJWTSecret() []byte {
 
 	// Fallback para o valor padrão (apenas para desenvolvimento)
 	// Em ambientes de produção, isso não deve ser usado
-	//return []byte("seu token padrão aqui")
-	return nil
+	fallbackKey := "desenvolvimento_inseguro_nao_use_em_producao"
+	fmt.Println("AVISO: Usando chave JWT de fallback! Isso é inseguro para produção.")
+	return []byte(fallbackKey)
 }

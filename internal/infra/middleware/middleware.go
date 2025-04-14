@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"context"
 	"github.com/diillson/api-gateway-go/internal/app/auth"
 	"github.com/diillson/api-gateway-go/internal/infra/metrics"
+	"github.com/diillson/api-gateway-go/pkg/cache"
+	"github.com/diillson/api-gateway-go/pkg/config"
 	"github.com/diillson/api-gateway-go/pkg/ratelimit"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -23,23 +26,65 @@ type Middleware struct {
 
 // NewMiddleware cria um novo conjunto de middlewares
 func NewMiddleware(logger *zap.Logger, authService *auth.AuthService, apiMetrics *metrics.APIMetrics) *Middleware {
-	// Criar um cliente Redis se necessário
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
+	// Carregar configuração
+	cfg, err := config.LoadConfig("./config")
+	serviceName := "api-gateway"
+	if err == nil && cfg.Tracing.Enabled {
+		serviceName = cfg.Tracing.ServiceName
+	}
 
-	// Inicializar o limiter
-	limiter := ratelimit.NewRedisLimiter(redisClient, logger)
+	// Criar um cliente Redis com a configuração correta
+	var redisClient *redis.Client
+
+	// Verificar se o Redis está configurado
+	if cfg.Cache.Type == "redis" && cfg.Cache.Redis.Address != "" {
+		redisClient, err = cache.NewRedisClientWithConfig(&redis.Options{
+			Addr:     cfg.Cache.Redis.Address,
+			Password: cfg.Cache.Redis.Password,
+			DB:       cfg.Cache.Redis.DB,
+		}, logger)
+
+		// Verificar a conexão
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			logger.Error("Erro ao conectar ao Redis para rate limiting, usando limitador em memória",
+				zap.Error(err),
+				zap.String("redis.address", cfg.Cache.Redis.Address))
+			// Fallback para um limitador em memória
+			redisClient = nil
+		} else {
+			logger.Info("Conectado ao Redis para rate limiting",
+				zap.String("redis.address", cfg.Cache.Redis.Address))
+		}
+	} else {
+		logger.Info("Redis não configurado para rate limiting, usando limitador em memória")
+	}
+
+	// Inicializar o limiter apropriado
+	var limiter *ratelimit.RedisLimiter
+	if redisClient != nil {
+		limiter = ratelimit.NewRedisLimiter(redisClient, logger)
+	} else {
+		// Aqui poderíamos usar um limitador em memória como fallback
+		// Para este exemplo, vamos criar um client Redis local
+		localRedisClient := redis.NewClient(&redis.Options{
+			Addr: "localhost:6379", // Endereço padrão local
+		})
+		limiter = ratelimit.NewRedisLimiter(localRedisClient, logger)
+	}
 
 	// Inicializar o middleware de rate limit
 	rateLimitMiddleware := NewRateLimitMiddleware(limiter, apiMetrics, logger)
+	tracingMiddleware := NewTracingMiddleware(logger, serviceName)
 
 	return &Middleware{
 		logger:              logger,
 		authMiddleware:      NewAuthMiddleware(authService, logger),
 		recoveryMiddleware:  NewRecoveryMiddleware(logger),
 		securityMiddleware:  NewSecurityMiddleware(logger),
-		tracingMiddleware:   NewTracingMiddleware(logger),
+		tracingMiddleware:   tracingMiddleware,
 		rateLimitMiddleware: rateLimitMiddleware,
 	}
 }
@@ -109,7 +154,7 @@ func (m *Middleware) CORS() gin.HandlerFunc {
 	return m.securityMiddleware.CORS()
 }
 
-// Tracing middleware para rastreamento de requisições
+// Tracing retorna o middleware de tracing
 func (m *Middleware) Tracing() gin.HandlerFunc {
 	return m.tracingMiddleware.Middleware()
 }
