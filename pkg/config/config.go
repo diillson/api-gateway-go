@@ -184,7 +184,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Banco de dados
 	v.SetDefault("database.driver", "postgres")
-	v.SetDefault("database.dsn", "./routes.db")
+	v.SetDefault("database.dsn", "postgres://postgres:postgres@postgres:5432/apigateway?sslmode=disable")
 	v.SetDefault("database.maxIdleConns", 10)
 	v.SetDefault("database.maxOpenConns", 50)
 	v.SetDefault("database.connMaxLifetime", "1h")

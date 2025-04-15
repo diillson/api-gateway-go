@@ -7,7 +7,7 @@ import (
 )
 
 // GetJWTSecret obtém o segredo JWT de diferentes fontes na seguinte ordem:
-// 1. Variável de ambiente JWT_SECRET
+// 1. Variável de ambiente JWT_SECRET_KEY
 // 2. Arquivo de configuração
 // 3. Fallback para valor padrão (apenas em desenvolvimento)
 // Modificar o retorno para usar um valor padrão
@@ -18,7 +18,7 @@ func GetJWTSecret() []byte {
 		return []byte(secret)
 	}
 
-	// Segundo, tentar obter da variável específica AG_AUTH_JWTSECRET
+	// Segundo, tentar obter da variável específica AG_AUTH_JWT_SECRET_KEY
 	secret = os.Getenv("AG_AUTH_JWT_SECRET_KEY")
 	if secret != "" {
 		return []byte(secret)
