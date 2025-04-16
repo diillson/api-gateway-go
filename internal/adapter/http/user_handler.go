@@ -6,6 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -405,8 +409,24 @@ type LoginRequest struct {
 }
 
 func (h *UserHandler) Login(c *gin.Context) {
+	// Obter o contexto atual
+	ctx := c.Request.Context()
+
+	// Criar span para a operação do handler
+	ctx, span := otel.Tracer("api-gateway.handler").Start(
+		ctx,
+		"UserHandler.Login",
+		trace.WithAttributes(
+			attribute.String("handler", "login"),
+			attribute.String("path", c.FullPath()),
+		),
+	)
+	defer span.End()
+
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		span.SetStatus(codes.Error, "invalid request")
+		span.SetAttributes(attribute.Bool("error", true))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -414,12 +434,16 @@ func (h *UserHandler) Login(c *gin.Context) {
 	// Buscar usuário pelo username
 	var user model.UserEntity
 	if err := h.db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+		span.SetStatus(codes.Error, "database error")
+		span.SetAttributes(attribute.Bool("error", true))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciais inválidas"})
 		return
 	}
 
 	// Verificar senha
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		span.SetStatus(codes.Error, "invalid credentials")
+		span.SetAttributes(attribute.Bool("error", true))
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciais inválidas"})
 		return
 	}

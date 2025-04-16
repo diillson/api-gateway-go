@@ -34,7 +34,9 @@ type ReverseProxy struct {
 // NewReverseProxy cria um novo ReverseProxy
 func NewReverseProxy(cache cache.Cache, logger *zap.Logger) *ReverseProxy {
 	// Criar o tracer para o proxy
-	tracer := otel.GetTracerProvider().Tracer("api-gateway.proxy")
+	tracer := otel.Tracer("api-gateway.proxy")
+
+	logger.Info("Inicializando Reverse Proxy com tracing habilitado")
 
 	return &ReverseProxy{
 		cache:           cache,
@@ -127,12 +129,28 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 	ctx := r.Context()
 
 	// Criar span para esta operação
-	_, span := p.tracer.Start(
+	ctx, span := p.tracer.Start(
 		ctx,
-		"ProxyRequest",
+		fmt.Sprintf("ProxyRequest:%s->%s", r.URL.Path, route.ServiceURL),
 		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("proxy.target_url", route.ServiceURL),
+			attribute.String("proxy.source_path", r.URL.Path),
+			attribute.StringSlice("proxy.allowed_methods", route.Methods),
+			attribute.Bool("proxy.is_active", route.IsActive),
+		),
 	)
 	defer span.End()
+
+	// Atualizar o request com o novo contexto
+	r = r.WithContext(ctx)
+
+	// Log para diagnóstico
+	p.logger.Info("Executando proxy com trace",
+		zap.String("trace_id", span.SpanContext().TraceID().String()),
+		zap.String("span_id", span.SpanContext().SpanID().String()),
+		zap.String("target", route.ServiceURL),
+		zap.String("path", r.URL.Path))
 
 	targetURL, err := url.Parse(route.ServiceURL)
 	if err != nil {
@@ -173,6 +191,9 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 				}
 			}
 
+			// ADICIONADO: Propagar explicitamente o contexto de tracing para o serviço downstream
+			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
 			// Adicionar span ID como cabeçalho para correlação
 			spanContext := trace.SpanContextFromContext(ctx)
 			if spanContext.IsValid() {
@@ -192,7 +213,11 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 			if res.StatusCode >= 400 {
 				span.SetStatus(codes.Error, fmt.Sprintf("Response status code: %d", res.StatusCode))
 				span.SetAttributes(attribute.Bool("error", true))
+			} else {
+				// Explicitamente marcar como OK se não for erro
+				span.SetStatus(codes.Ok, "")
 			}
+
 			return nil
 		},
 
@@ -206,6 +231,7 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 			span.SetStatus(codes.Error, err.Error())
 			span.SetAttributes(attribute.Bool("error", true))
 			span.SetAttributes(attribute.String("error.message", err.Error()))
+			span.RecordError(err) // ADICIONADO: Registrar o erro explicitamente
 
 			// Determinar o tipo de erro e status HTTP apropriado
 			var errorType string
@@ -237,6 +263,13 @@ func (p *ReverseProxy) doProxy(route *model.Route, w http.ResponseWriter, r *htt
 
 	// Executa o proxy
 	proxy.ServeHTTP(w, r)
+
+	// A resposta foi enviada com sucesso se chegou aqui
+	// Garantir que o status OK seja definido (pode ter sido substituído por valores do ModifyResponse)
+	if span.SpanContext().IsValid() {
+		span.SetStatus(codes.Ok, "")
+	}
+
 	return nil, nil
 }
 

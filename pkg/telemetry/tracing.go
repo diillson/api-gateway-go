@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/diillson/api-gateway-go/pkg/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -26,20 +27,6 @@ type TracerProvider struct {
 
 // NewTracerProvider inicializa e configura o OpenTelemetry
 func NewTracerProvider(ctx context.Context, serviceName, collectorURL string, logger *zap.Logger) (*TracerProvider, error) {
-	// Conectar ao coletor OTLP
-	conn, err := grpc.DialContext(ctx, collectorURL,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock())
-	if err != nil {
-		return nil, err
-	}
-
-	// Criar exportador de traces
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
-	if err != nil {
-		return nil, err
-	}
-
 	// Criar recurso com atributos do serviço
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
@@ -51,10 +38,22 @@ func NewTracerProvider(ctx context.Context, serviceName, collectorURL string, lo
 		return nil, err
 	}
 
+	// Carregar configuração do arquivo
+	cfg, err := loadTracingConfig(logger)
+	if err != nil {
+		logger.Warn("Erro ao carregar configuração do arquivo, usando valores padrão", zap.Error(err))
+	}
+
+	// Determinar qual exportador usar baseado na configuração
+	traceExporter, err := getTraceExporter(ctx, collectorURL, cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
 	// Criar o TracerProvider com a configuração
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)), // Amostragem de 10%
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(cfg.SamplingRatio)),
+		sdktrace.WithBatcher(traceExporter),
 		sdktrace.WithResource(res),
 	)
 
@@ -66,11 +65,82 @@ func NewTracerProvider(ctx context.Context, serviceName, collectorURL string, lo
 
 	// Configurar o provider global
 	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 	return &TracerProvider{
 		provider: tp,
 		logger:   logger,
 	}, nil
+}
+
+// loadTracingConfig carrega a configuração de tracing do arquivo ou ambiente
+func loadTracingConfig(logger *zap.Logger) (config.TracingConfig, error) {
+	// Valor padrão
+	defaultConfig := config.TracingConfig{
+		Enabled:       true,
+		Provider:      "otlp",
+		SamplingRatio: 0.1,
+	}
+
+	// Tentar carregar do arquivo
+	cfg, err := config.LoadConfig("./config")
+	if err != nil {
+		logger.Warn("Não foi possível carregar arquivo de configuração", zap.Error(err))
+		return defaultConfig, err
+	}
+
+	// Sobrescrever com variáveis de ambiente se definidas
+	if provider := os.Getenv("AG_TRACING_PROVIDER"); provider != "" {
+		cfg.Tracing.Provider = provider
+	}
+
+	if endpoint := os.Getenv("AG_TRACING_ENDPOINT"); endpoint != "" {
+		cfg.Tracing.Endpoint = endpoint
+	}
+
+	// Verificar se está habilitado via env (prioridade sobre arquivo)
+	if enabled := os.Getenv("AG_TRACING_ENABLED"); enabled != "" {
+		cfg.Tracing.Enabled = (enabled == "true" || enabled == "1")
+	}
+
+	return cfg.Tracing, nil
+}
+
+// getTraceExporter seleciona o exportador de trace baseado na configuração
+func getTraceExporter(ctx context.Context, endpointURL string, cfg config.TracingConfig, logger *zap.Logger) (sdktrace.SpanExporter, error) {
+	// Usar endpointURL se fornecido como parâmetro, caso contrário usar da configuração
+	if endpointURL == "" {
+		endpointURL = cfg.Endpoint
+	}
+
+	// Log da configuração usada
+	logger.Info("Configurando exportador de tracing",
+		zap.String("provider", cfg.Provider),
+		zap.String("endpoint", endpointURL),
+		zap.Float64("sampling_ratio", cfg.SamplingRatio))
+
+	switch cfg.Provider {
+	case "otlp", "opentelemetry":
+		// Conectar ao coletor OTLP
+		conn, err := grpc.DialContext(ctx, endpointURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock())
+		if err != nil {
+			return nil, err
+		}
+		return otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+
+	default:
+		logger.Warn("Provedor de tracing desconhecido, usando OTLP como padrão",
+			zap.String("provider", cfg.Provider))
+		conn, err := grpc.DialContext(ctx, endpointURL,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock())
+		if err != nil {
+			return nil, err
+		}
+		return otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	}
 }
 
 // Shutdown encerra o tracer provider de forma limpa

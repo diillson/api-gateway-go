@@ -124,6 +124,21 @@ profile:
 	@echo "Executando com profiler em http://localhost:6060/debug/pprof/"
 	@GO_PROFILE=true ./$(BINARY_NAME) server
 
+# Iniciar apenas o Zipkin para traces
+start-zipkin:
+	@echo "Iniciando Zipkin na porta 9411..."
+	@docker-compose up -d zipkin
+
+# Parar o Zipkin
+stop-zipkin:
+	@echo "Parando Zipkin..."
+	@docker-compose stop zipkin
+
+# Abrir UI do Zipkin no navegador
+open-zipkin:
+	@echo "Abrindo Zipkin UI no navegador..."
+	@xdg-open http://localhost:9411 2>/dev/null || open http://localhost:9411 2>/dev/null || echo "Abra manualmente: http://localhost:9411"
+
 # Construir imagem Docker
 docker-build:
 	@echo "Construindo imagem Docker $(DOCKER_IMAGE):$(VERSION)..."

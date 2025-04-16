@@ -83,6 +83,35 @@ services:
     networks:
       - api-gateway-network
 
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./monitoring/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Metrics internas do Collector
+      - "8889:8889"   # Endpoint de métricas para o Prometheus
+      - "13133:13133" # Health check
+    depends_on:
+      - zipkin
+    networks:
+      - api-gateway-network
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411"
+    networks:
+      - api-gateway-network
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:9411/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   grafana:
     image: grafana/grafana:9.5.1
     ports:

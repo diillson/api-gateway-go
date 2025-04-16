@@ -2,11 +2,16 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"github.com/diillson/api-gateway-go/internal/adapter/proxy"
 	"github.com/diillson/api-gateway-go/internal/app/route"
 	"github.com/diillson/api-gateway-go/internal/domain/model"
 	"github.com/diillson/api-gateway-go/internal/infra/metrics"
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"net/http"
 	"strconv"
@@ -213,6 +218,26 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 }
 
 func (h *Handler) ServeAPI(c *gin.Context) {
+	// Extrair o contexto atual com qualquer span existente
+	ctx := c.Request.Context()
+
+	// Obter o tracer do OpenTelemetry
+	tracer := otel.GetTracerProvider().Tracer("api-gateway.handler")
+
+	// Criar um novo span específico para esta rota dinâmica
+	ctx, span := tracer.Start(
+		ctx,
+		fmt.Sprintf("ServeAPI:%s", c.Request.URL.Path),
+		trace.WithAttributes(
+			attribute.String("http.path", c.Request.URL.Path),
+			attribute.String("http.method", c.Request.Method),
+		),
+	)
+	defer span.End()
+
+	// Atualizar o contexto do request para incluir o novo span
+	c.Request = c.Request.WithContext(ctx)
+
 	// Obter a rota para o caminho atual
 	path := c.Request.URL.Path
 
@@ -226,7 +251,6 @@ func (h *Handler) ServeAPI(c *gin.Context) {
 		zap.String("raw_path", c.Request.URL.RawPath),
 		zap.String("raw_query", c.Request.URL.RawQuery))
 
-	ctx := c.Request.Context()
 	route, err := h.routeService.GetRouteByPath(ctx, path)
 	if err != nil {
 		h.logger.Error("Rota não encontrada",
@@ -323,11 +347,21 @@ func (h *Handler) ServeAPI(c *gin.Context) {
 			zap.String("path", path),
 			zap.Error(err))
 
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+
 		if h.metrics != nil {
 			h.metrics.RequestError(path, c.Request.Method, "proxy_error")
 		}
 		return
 	}
+
+	// Adicionar informações sobre o resultado ao span
+	span.SetStatus(codes.Ok, "")
+	span.SetAttributes(
+		attribute.Int("http.status_code", c.Writer.Status()),
+		attribute.Int("http.response_size", c.Writer.Size()),
+	)
 
 	// Atualizar métricas após a requisição ser processada
 	duration := time.Since(start)

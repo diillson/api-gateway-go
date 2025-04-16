@@ -132,7 +132,7 @@ func main() {
 	}
 
 	// Inicializar aplicação
-	application, err := app.NewApp(logger)
+	application, err := app.NewApp(logger, cfg)
 	if err != nil {
 		logger.Fatal("Falha ao inicializar aplicação", zap.Error(err))
 	}

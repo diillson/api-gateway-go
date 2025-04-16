@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"github.com/diillson/api-gateway-go/internal/adapter/database"
 	"github.com/diillson/api-gateway-go/internal/adapter/http"
 	"github.com/diillson/api-gateway-go/internal/adapter/proxy"
@@ -34,12 +33,29 @@ type App struct {
 }
 
 // NewApp cria uma nova instância da aplicação com todas as dependências injetadas
-func NewApp(logger *zap.Logger) (*App, error) {
+func NewApp(logger *zap.Logger, cfg *config.Config) (*App, error) {
 	// Carregar a configuração do arquivo
-	cfg, err := config.LoadConfig("./config")
-	if err != nil {
-		return nil, fmt.Errorf("erro ao carregar configuração: %w", err)
-	}
+	//cfg, err := config.LoadConfig("./config")
+	//if err != nil {
+	//	return nil, fmt.Errorf("erro ao carregar configuração: %w", err)
+	//}
+
+	//if cfg.Tracing.Enabled {
+	//	tp, err := telemetry.NewTracerProvider(
+	//		context.Background(),
+	//		cfg.Tracing.ServiceName,
+	//		cfg.Tracing.Endpoint,
+	//		logger,
+	//	)
+	//	if err != nil {
+	//		logger.Error("Falha ao inicializar tracer", zap.Error(err))
+	//	} else {
+	//		logger.Info("Tracer inicializado com sucesso",
+	//			zap.String("provider", cfg.Tracing.Provider),
+	//			zap.String("endpoint", cfg.Tracing.Endpoint))
+	//		defer tp.Shutdown(context.Background())
+	//	}
+	//}
 
 	// Configurações do banco de dados baseadas no arquivo config.yaml
 	dbConfig := database.Config{

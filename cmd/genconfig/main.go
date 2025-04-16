@@ -99,8 +99,8 @@ func main() {
 		},
 		Tracing: config.TracingConfig{
 			Enabled:       false,
-			Provider:      "opentelemetry",
-			Endpoint:      "localhost:4317",
+			Provider:      "otlp",
+			Endpoint:      "otel-collector:4317",
 			ServiceName:   "api-gateway",
 			SamplingRatio: 0.1,
 		},
