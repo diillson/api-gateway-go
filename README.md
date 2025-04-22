@@ -1,7 +1,7 @@
 # API Gateway em Go
 
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/diillson/api-gateway-go)
-![Build Status](https://img.shields.io/github/workflow/status/diillson/api-gateway-go/CI%2FCD%20Pipeline)
+![Build Status](https://img.shields.io/github/actions/workflow/status/diillson/api-gateway-go/ci.yml?branch=main)
 ![Coverage](https://img.shields.io/codecov/c/github/diillson/api-gateway-go)
 ![License](https://img.shields.io/github/license/diillson/api-gateway-go)
 
