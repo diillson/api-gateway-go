@@ -34,29 +34,6 @@ type App struct {
 
 // NewApp cria uma nova instância da aplicação com todas as dependências injetadas
 func NewApp(logger *zap.Logger, cfg *config.Config) (*App, error) {
-	// Carregar a configuração do arquivo
-	//cfg, err := config.LoadConfig("./config")
-	//if err != nil {
-	//	return nil, fmt.Errorf("erro ao carregar configuração: %w", err)
-	//}
-
-	//if cfg.Tracing.Enabled {
-	//	tp, err := telemetry.NewTracerProvider(
-	//		context.Background(),
-	//		cfg.Tracing.ServiceName,
-	//		cfg.Tracing.Endpoint,
-	//		logger,
-	//	)
-	//	if err != nil {
-	//		logger.Error("Falha ao inicializar tracer", zap.Error(err))
-	//	} else {
-	//		logger.Info("Tracer inicializado com sucesso",
-	//			zap.String("provider", cfg.Tracing.Provider),
-	//			zap.String("endpoint", cfg.Tracing.Endpoint))
-	//		defer tp.Shutdown(context.Background())
-	//	}
-	//}
-
 	// Configurações do banco de dados baseadas no arquivo config.yaml
 	dbConfig := database.Config{
 		Driver:          cfg.Database.Driver,
@@ -217,6 +194,7 @@ func NewApp(logger *zap.Logger, cfg *config.Config) (*App, error) {
 // RegisterRoutes registra todas as rotas no router
 func (a *App) RegisterRoutes(router *gin.Engine) {
 	// Configurar middleware global
+	router.Use(a.Middleware.IgnoreFavicon())
 	router.Use(a.Middleware.Recovery())
 	router.Use(a.Middleware.Logger())
 	router.Use(a.Middleware.Tracing())

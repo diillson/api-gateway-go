@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
+	"net/http"
 	"time"
 )
 
@@ -117,6 +118,18 @@ func (m *Middleware) AuthenticateAdmin(c *gin.Context) {
 // Recovery middleware para recuperação de pânicos
 func (m *Middleware) Recovery() gin.HandlerFunc {
 	return m.recoveryMiddleware.Recovery()
+}
+
+// IgnoreFavicon é um middleware que ignora requisições para /favicon.ico
+func (m *Middleware) IgnoreFavicon() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Se for uma requisição para /favicon.ico, retornar 204 (No Content)
+		if c.Request.URL.Path == "/favicon.ico" {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
 }
 
 // Logger middleware para logging de requisições
