@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/diillson/api-gateway-go/internal/domain/model"
+	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

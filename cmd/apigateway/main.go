@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/diillson/api-gateway-go/pkg/config"
 	"github.com/diillson/api-gateway-go/pkg/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/acme/autocert"
 	"net/http"
@@ -107,9 +109,13 @@ func main() {
 	}
 	defer logger.Sync()
 
+	ctx, span := otel.Tracer("api-gateway.main").Start(context.Background(), "Server Initialization")
+	defer span.End()
+
 	// Carregar configuração
 	cfg, err := config.LoadConfig("./config")
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		logger.Fatal("Falha ao carregar configuração", zap.Error(err))
 	}
 
@@ -134,6 +140,7 @@ func main() {
 	// Inicializar aplicação
 	application, err := app.NewApp(logger, cfg)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		logger.Fatal("Falha ao inicializar aplicação", zap.Error(err))
 	}
 

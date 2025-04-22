@@ -76,6 +76,10 @@ func NewApp(logger *zap.Logger, cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
+	logger.Info("Configuração de banco de dados",
+		zap.String("driver", cfg.Database.Driver),
+		zap.String("dsn", cfg.Database.DSN))
+
 	// Inicializar métricas
 	apiMetrics := metrics.NewAPIMetrics()
 	metricsHandler := &middleware.MetricsHandler{

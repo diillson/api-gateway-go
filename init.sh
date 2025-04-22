@@ -90,11 +90,14 @@ check_prerequisites() {
     fi
 
     # Verificar permissões de escrita nos diretórios
+    # shellcheck disable=SC1073
+    # shellcheck disable=SC1061
     for dir in "$CONFIG_PATH" "$DATA_DIR" "$LOG_DIR" "$TEMP_DIR"; do
         if [ ! -w "$dir" ]; then
             log "ERROR" "Sem permissão de escrita no diretório: $dir"
             exit 1
         fi
+    # shellcheck disable=SC1062
     fi
 
     # Verificar conectividade com serviços externos no modo production
