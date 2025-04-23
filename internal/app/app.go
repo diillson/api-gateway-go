@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	net2 "net/http"
+	"os"
 	"time"
 )
 
@@ -241,6 +242,11 @@ func (a *App) RegisterRoutes(router *gin.Engine) {
 		admin.GET("/clear-cache", a.Handler.ClearCache)
 		admin.GET("/diagnose-route", a.Handler.DiagnoseRoute)
 		admin.GET("/health/detailed", a.Handler.DetailedHealth)
+
+		// Rota de diagnóstico (apenas para desenvolvimento)
+		if os.Getenv("ENV") == "development" {
+			admin.GET("/diagnose-user", userHandler.DiagnoseUserStorage)
+		}
 	}
 
 	router.Any("/api/*path", a.Handler.ServeAPI)

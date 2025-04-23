@@ -135,6 +135,14 @@ func (d *Database) Close() error {
 
 // migrate aplica migrações de banco de dados
 func (d *Database) migrate(ctx context.Context) error {
+	// Verificar o driver para ajustes específicos
+	driver := d.db.Dialector.Name()
+
+	if driver == "sqlite" {
+		// Executar configurações específicas para SQLite
+		d.db.Exec("PRAGMA foreign_keys = ON")
+	}
+
 	// Auto migração para garantir que a tabela de rotas existe
 	if err := d.db.AutoMigrate(&model.RouteEntity{}); err != nil {
 		return fmt.Errorf("falha ao aplicar auto migração: %w", err)

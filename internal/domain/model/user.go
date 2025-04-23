@@ -12,7 +12,7 @@ type User struct {
 
 // UserEntity é a representação de banco de dados de um usuário
 type UserEntity struct {
-	ID        string    `gorm:"primaryKey;type:uuid;default:uuid_generate_v4()"`
+	ID        string    `gorm:"primaryKey;type:varchar(36)"`
 	Username  string    `gorm:"uniqueIndex;not null;size:50"`
 	Password  string    `gorm:"not null"`
 	Email     string    `gorm:"uniqueIndex;size:100"`

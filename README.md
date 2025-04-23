@@ -576,6 +576,20 @@ Para invalidar o cache manualmente:
       -d '{"path": "/api/products"}'
 ```
 
+### Diagnóstico de Usuário
+
+# Para PostgreSQL
+```bash
+go run cmd/tools/diagnose_user.go -username "admin" -driver postgres -dsn "postgres://postgres:postgres@localhost:5432/apigateway?sslmode=disable"
+```    
+
+# Para SQLite
+```bash
+go run cmd/tools/diagnose_user.go -username "admin" -driver sqlite -dsn "./data/apigateway.db"
+```
+
+Esta ferramenta é especialmente útil para diagnosticar problemas específicos com o armazenamento de usuários em diferentes tipos de banco de dados, permitindo comparar diretamente como os dados são armazenados e ajudando a identificar incompatibilidades.
+
 ## 🔒 Segurança Avançada
 
 ### Proteção Contra Ataques Comuns

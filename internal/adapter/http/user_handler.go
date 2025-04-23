@@ -1,6 +1,7 @@
 package http
 
 import (
+	"github.com/diillson/api-gateway-go/internal/adapter/database"
 	"github.com/diillson/api-gateway-go/internal/domain/model"
 	"github.com/diillson/api-gateway-go/pkg/security"
 	"github.com/gin-gonic/gin"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -476,6 +478,48 @@ func (h *UserHandler) Login(c *gin.Context) {
 			"username": user.Username,
 			"role":     user.Role,
 		},
+	})
+}
+
+// DiagnoseUserStorage endpoint para diagnóstico (apenas em desenvolvimento)
+func (h *UserHandler) DiagnoseUserStorage(c *gin.Context) {
+	// Verificar se está em ambiente de desenvolvimento
+	if os.Getenv("ENV") != "development" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Esta rota está disponível apenas em ambiente de desenvolvimento"})
+		return
+	}
+
+	// Verificar se o usuário atual é admin
+	if !isAdmin(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Acesso negado"})
+		return
+	}
+
+	// Obter o username a ser diagnosticado
+	username := c.Query("username")
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Parâmetro 'username' é obrigatório"})
+		return
+	}
+
+	// Criar repo de usuário se não existir
+	userRepo := database.NewUserRepository(h.db)
+
+	// Executar diagnóstico
+	report, err := userRepo.DiagnoseUserStorage(username)
+	if err != nil {
+		h.logger.Error("Erro ao executar diagnóstico de usuário",
+			zap.String("username", username),
+			zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Erro ao executar diagnóstico: " + err.Error()})
+		return
+	}
+
+	// Retornar relatório
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Diagnóstico de usuário concluído",
+		"report":  report,
+		"note":    "Este endpoint é apenas para desenvolvimento e diagnóstico",
 	})
 }
 

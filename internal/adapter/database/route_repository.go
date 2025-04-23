@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"strings"
 	"time"
 
 	"github.com/diillson/api-gateway-go/internal/domain/model"
@@ -65,7 +66,7 @@ func (r *RouteRepository) GetRoutes(ctx context.Context) ([]*model.Route, error)
 
 	routes := make([]*model.Route, 0, len(entities))
 	for _, entity := range entities {
-		route, err := entityToModel(&entity)
+		route, err := entityToModel(&entity, r.db)
 		if err != nil {
 			r.logger.Error("falha ao converter entidade para modelo", zap.Error(err))
 			// Registrar erro de conversão no span, mas continuar
@@ -132,7 +133,7 @@ func (r *RouteRepository) GetRouteByPath(ctx context.Context, path string) (*mod
 	// Registrar que a rota foi encontrada
 	span.SetAttributes(attribute.Bool("route.found", true))
 
-	route, err := entityToModel(&entity)
+	route, err := entityToModel(&entity, r.db)
 	if err != nil {
 		// Registrar erro no span
 		span.SetStatus(codes.Error, "conversion error")
@@ -170,7 +171,7 @@ func (r *RouteRepository) AddRoute(ctx context.Context, route *model.Route) erro
 	)
 	defer span.End()
 
-	entity, err := modelToEntity(route)
+	entity, err := modelToEntity(route, r.db)
 	if err != nil {
 		span.SetStatus(codes.Error, "conversion error")
 		span.SetAttributes(
@@ -215,7 +216,7 @@ func (r *RouteRepository) UpdateRoute(ctx context.Context, route *model.Route) e
 	)
 	defer span.End()
 
-	entity, err := modelToEntity(route)
+	entity, err := modelToEntity(route, r.db)
 	if err != nil {
 		span.SetStatus(codes.Error, "conversion error")
 		span.SetAttributes(
@@ -399,7 +400,7 @@ func (r *RouteRepository) GetRoutesWithFilters(ctx context.Context, filters map[
 	conversionErrors := 0
 
 	for _, entity := range entities {
-		route, err := entityToModel(&entity)
+		route, err := entityToModel(&entity, r.db)
 		if err != nil {
 			r.logger.Error("falha ao converter entidade para modelo", zap.Error(err))
 			// Registrar evento de erro no span, mas continuar processando
@@ -432,20 +433,84 @@ func (r *RouteRepository) GetRoutesWithFilters(ctx context.Context, filters map[
 }
 
 // entityToModel converte uma entidade em um modelo
-func entityToModel(entity *model.RouteEntity) (*model.Route, error) {
+func entityToModel(entity *model.RouteEntity, db *gorm.DB) (*model.Route, error) {
 	var methods []string
-	if err := json.Unmarshal([]byte(entity.MethodsJSON), &methods); err != nil {
-		return nil, err
-	}
-
 	var headers []string
-	if err := json.Unmarshal([]byte(entity.HeadersJSON), &headers); err != nil {
-		return nil, err
+	var requiredHeaders []string
+	var err error
+
+	// Determinar o tipo de banco de dados
+	dbType := "postgres" // valor padrão
+	if db != nil {
+		dbType = db.Dialector.Name()
 	}
 
-	var requiredHeaders []string
-	if err := json.Unmarshal([]byte(entity.RequiredHeadersJSON), &requiredHeaders); err != nil {
-		return nil, err
+	// Processar o JSON de métodos com base no tipo de banco
+	if dbType == "sqlite" || dbType == "sqlite3" {
+		// Para SQLite: tratar possíveis strings vazias ou nulas
+		if entity.MethodsJSON == "" {
+			methods = []string{}
+		} else {
+			err = json.Unmarshal([]byte(entity.MethodsJSON), &methods)
+			if err != nil {
+				// Tentar deserializar string entre aspas (formato comum em SQLite)
+				quotedJSON := strings.Trim(entity.MethodsJSON, "\"")
+				err = json.Unmarshal([]byte(quotedJSON), &methods)
+				if err != nil {
+					return nil, fmt.Errorf("falha ao deserializar métodos (SQLite): %w", err)
+				}
+			}
+		}
+	} else {
+		// PostgreSQL e outros bancos
+		err = json.Unmarshal([]byte(entity.MethodsJSON), &methods)
+		if err != nil {
+			return nil, fmt.Errorf("falha ao deserializar métodos: %w", err)
+		}
+	}
+
+	// Processar o JSON de cabeçalhos
+	if dbType == "sqlite" || dbType == "sqlite3" {
+		if entity.HeadersJSON == "" {
+			headers = []string{}
+		} else {
+			err = json.Unmarshal([]byte(entity.HeadersJSON), &headers)
+			if err != nil {
+				// Tentar deserializar string entre aspas
+				quotedJSON := strings.Trim(entity.HeadersJSON, "\"")
+				err = json.Unmarshal([]byte(quotedJSON), &headers)
+				if err != nil {
+					return nil, fmt.Errorf("falha ao deserializar cabeçalhos (SQLite): %w", err)
+				}
+			}
+		}
+	} else {
+		err = json.Unmarshal([]byte(entity.HeadersJSON), &headers)
+		if err != nil {
+			return nil, fmt.Errorf("falha ao deserializar cabeçalhos: %w", err)
+		}
+	}
+
+	// Processar o JSON de cabeçalhos obrigatórios
+	if dbType == "sqlite" || dbType == "sqlite3" {
+		if entity.RequiredHeadersJSON == "" {
+			requiredHeaders = []string{}
+		} else {
+			err = json.Unmarshal([]byte(entity.RequiredHeadersJSON), &requiredHeaders)
+			if err != nil {
+				// Tentar deserializar string entre aspas
+				quotedJSON := strings.Trim(entity.RequiredHeadersJSON, "\"")
+				err = json.Unmarshal([]byte(quotedJSON), &requiredHeaders)
+				if err != nil {
+					return nil, fmt.Errorf("falha ao deserializar cabeçalhos obrigatórios (SQLite): %w", err)
+				}
+			}
+		}
+	} else {
+		err = json.Unmarshal([]byte(entity.RequiredHeadersJSON), &requiredHeaders)
+		if err != nil {
+			return nil, fmt.Errorf("falha ao deserializar cabeçalhos obrigatórios: %w", err)
+		}
 	}
 
 	return &model.Route{
@@ -463,33 +528,89 @@ func entityToModel(entity *model.RouteEntity) (*model.Route, error) {
 	}, nil
 }
 
-// modelToEntity converte um modelo em uma entidade
-func modelToEntity(route *model.Route) (*model.RouteEntity, error) {
+// modelToEntity converte um modelo em uma entidade, garantindo compatibilidade entre bancos
+func modelToEntity(route *model.Route, db *gorm.DB) (*model.RouteEntity, error) {
+	// Determinar o tipo de banco de dados
+	dbType := "postgres" // valor padrão
+	if db != nil {
+		dbType = db.Dialector.Name()
+	}
+
+	// Garantir que arrays vazios sejam serializados corretamente para evitar problemas com NULL
+	if route.Methods == nil {
+		route.Methods = []string{}
+	}
+	if route.Headers == nil {
+		route.Headers = []string{}
+	}
+	if route.RequiredHeaders == nil {
+		route.RequiredHeaders = []string{}
+	}
+
+	// Serializar para JSON com tratamento de erro melhorado
 	methodsJSON, err := json.Marshal(route.Methods)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("falha ao serializar métodos: %w", err)
 	}
 
 	headersJSON, err := json.Marshal(route.Headers)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("falha ao serializar cabeçalhos: %w", err)
 	}
 
 	requiredHeadersJSON, err := json.Marshal(route.RequiredHeaders)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("falha ao serializar cabeçalhos obrigatórios: %w", err)
+	}
+
+	// Garantir que strings JSON vazias são "[]" em vez de ""
+	methodsJSONStr := string(methodsJSON)
+	if methodsJSONStr == "" || methodsJSONStr == "null" {
+		methodsJSONStr = "[]"
+	}
+
+	headersJSONStr := string(headersJSON)
+	if headersJSONStr == "" || headersJSONStr == "null" {
+		headersJSONStr = "[]"
+	}
+
+	requiredHeadersJSONStr := string(requiredHeadersJSON)
+	if requiredHeadersJSONStr == "" || requiredHeadersJSONStr == "null" {
+		requiredHeadersJSONStr = "[]"
+	}
+
+	// Tratamento especial para SQLite, que pode ter problemas com alguns formatos JSON
+	if dbType == "sqlite" || dbType == "sqlite3" {
+		// Garante que o formato seja adequado para SQLite
+		if methodsJSONStr == "[]" {
+			methodsJSONStr = "\"[]\"" // para SQLite, pode ser melhor armazenar como string
+		}
+		if headersJSONStr == "[]" {
+			headersJSONStr = "\"[]\""
+		}
+		if requiredHeadersJSONStr == "[]" {
+			requiredHeadersJSONStr = "\"[]\""
+		}
 	}
 
 	entity := &model.RouteEntity{
 		Path:                route.Path,
 		ServiceURL:          route.ServiceURL,
-		MethodsJSON:         string(methodsJSON),
-		HeadersJSON:         string(headersJSON),
+		MethodsJSON:         methodsJSONStr,
+		HeadersJSON:         headersJSONStr,
 		Description:         route.Description,
 		IsActive:            route.IsActive,
 		CallCount:           route.CallCount,
 		TotalResponse:       int64(route.TotalResponse),
-		RequiredHeadersJSON: string(requiredHeadersJSON),
+		RequiredHeadersJSON: requiredHeadersJSONStr,
+	}
+
+	// Preservar as datas se estiverem definidas
+	if !route.CreatedAt.IsZero() {
+		entity.CreatedAt = route.CreatedAt
+	}
+	if !route.UpdatedAt.IsZero() {
+		entity.UpdatedAt = route.UpdatedAt
 	}
 
 	return entity, nil
