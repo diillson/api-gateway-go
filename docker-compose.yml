@@ -9,16 +9,17 @@ services:
       - "8080:8080"
     environment:
       - AG_SERVER_PORT=8080
-      - AG_DATABASE_DRIVER=postgres
-      - AG_DATABASE_DSN=postgres://postgres:postgres@postgres:5432/apigateway?sslmode=disable
+#      - AG_DATABASE_DRIVER=postgres
+#      - AG_DATABASE_DSN=postgres://postgres:postgres@postgres:5432/apigateway?sslmode=disable
       - AG_CACHE_TYPE=redis
       - AG_CACHE_ADDRESS=redis:6379
       - AG_LOGGING_LEVEL=debug
       - AG_LOGGING_FORMAT=console
       - AG_LOGGING_PRODUCTION=false
     volumes:
+      - apigateway_data:/app
+      - ./dados-gateway:/app
       - ./config/config.yaml:/app/config/config.yaml
-      - ./logs:/app/logs
     depends_on:
       - postgres
       - redis
@@ -139,4 +140,4 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
-    
+#  apigateway_data:
