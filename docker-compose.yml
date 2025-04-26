@@ -17,8 +17,7 @@ services:
       - AG_LOGGING_FORMAT=console
       - AG_LOGGING_PRODUCTION=false
     volumes:
-      - apigateway_data:/app
-      - ./dados-gateway:/app
+#      - apigateway_data:/app
       - ./config/config.yaml:/app/config/config.yaml
     depends_on:
       - postgres
@@ -140,4 +139,4 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
-  apigateway_data:
+#  apigateway_data:
