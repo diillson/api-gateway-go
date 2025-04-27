@@ -80,18 +80,28 @@ O API Gateway pode ser configurado através de:
 ### Exemplo de Configuração
 ```yaml
     server:
-       port: 8080
+       port: 8080  # Porta HTTP para o servidor (Não usada para ENV != development e TLS = true)
        host: "0.0.0.0"
        readTimeout: "5s"
        writeTimeout: "10s"
        idleTimeout: "30s"
+       maxheaderbytes: 1048576
+       tls: false
+       certfile: /path/to/cert.pem
+       keyfile: /path/to/key.pem
+       baseurl: https://api.example.com
+       domains:
+         - api.example.com
 
     database:
-       driver: "postgres"              # Opções: sqlite, postgres, mysql
-       dsn: "./data/routes.db"       # Formato DSN específico para cada driver
+       driver: postgres             # Opções: sqlite, postgres, mysql
+       dsn: postgres://postgres:postgres@postgres:5432/apigateway?sslmode=disable    # Formato DSN específico para cada driver
        maxIdleConns: 10
        maxOpenConns: 50
        connMaxLifetime: "1h"
+       loglevel: warn
+       slowthreshold: 200ms
+       migrationdir: ./migrations
       # skipmigrations: true (Apenas usar se for pular as migrações pois default é false)       
 
     cache:
@@ -122,11 +132,26 @@ O API Gateway pode ser configurado através de:
        refreshEnabled: true
        refreshDuration: "168h"
        adminUsers: ["admin"]
+       passwordminlen: 8
+
+    logging:
+      level: info
+      format: json
+      outputpath: stdout
+      errorpath: stderr
+      production: true
 
     metrics:
-       enabled: true
-       prometheuspath: "/metrics"
-       reportInterval: "15s"
+      enabled: true
+      prometheuspath: "/metrics"
+      reportInterval: "15s"
+      
+    tracing:
+      enabled: true
+      provider: otlp
+      endpoint: otel-collector:4317
+      servicename: api-gateway
+      samplingratio: 1.0      
 
     features:
        ratelimiter: true             # Ativar limitação de taxa
@@ -160,6 +185,12 @@ O API Gateway pode ser configurado através de:
     AG_FEATURES_RATELIMITER=true
     AG_FEATURES_CIRCUITBREAKER=true
     AG_FEATURES_CACHING=true
+    
+    AG_SERVER_TLS=true                          # Habilitar TLS/HTTPS
+    SERVER_DOMAINS=api.seudominio.com,outro.seudominio.com  # Domínios para Let's Encrypt
+    LETSENCRYPT_EMAIL=seu@email.com             # Email para Let's Encrypt
+    AG_SERVER_CERT_FILE=/path/to/cert.pem       # Opcional: Caminho para certificado
+    AG_SERVER_KEY_FILE=/path/to/key.pem         # Opcional: Caminho para chave privada
 ```
 ## 🔒 Autenticação e Segurança
 

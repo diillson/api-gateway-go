@@ -126,8 +126,24 @@ func main() {
 	// Adicionar comentários para documentação
 	yamlStr := string(data)
 
+	// Usar regex para adicionar comentários aos parâmetros específicos do certificado
+	re := regexp.MustCompile(`(\s+certfile:\s+/path/to/cert.pem)`)
+	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Opcional: Caminhos para certificados próprios`)
+
+	re = regexp.MustCompile(`(\s+keyfile:\s+/path/to/key.pem)`)
+	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Opcional: Caminhos para certificados próprios`)
+
+	re = regexp.MustCompile(`(\s+domains:)`)
+	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Domínios para Let's Encrypt (ignorados se certificados próprios forem usados)`)
+
+	re = regexp.MustCompile(`(\s+tls:\s+false)`)
+	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Habilitar HTTPS`)
+
+	re = regexp.MustCompile(`(\s+port:\s+8080)`)
+	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Porta HTTP para o servidor`)
+
 	// Usar regex para adicionar comentários aos parâmetros específicos do Redis
-	re := regexp.MustCompile(`(\s+type:\s+memory)`)
+	re = regexp.MustCompile(`(\s+type:\s+memory)`)
 	yamlStr = re.ReplaceAllString(yamlStr, `$1  # Opções: "memory" ou "redis"`)
 
 	re = regexp.MustCompile(`(\s+skipmigrations:\s+false)`)

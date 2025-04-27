@@ -16,6 +16,7 @@ services:
       - AG_LOGGING_LEVEL=debug
       - AG_LOGGING_FORMAT=console
       - AG_LOGGING_PRODUCTION=false
+#      - LETSENCRYPT_EMAIL=seuemail@example.com
     volumes:
 #      - apigateway_data:/app
       - ./config/config.yaml:/app/config/config.yaml
